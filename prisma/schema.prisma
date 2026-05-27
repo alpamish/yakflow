@@ -1,0 +1,376 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// CORE / AUTH MODULE
+// ============================================
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  password      String
+  role          String   @default("viewer") // super_admin, admin, accountant, operations, finance_manager, data_entry, viewer
+  avatar        String?
+  isActive      Boolean  @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  auditLogs     AuditLog[]
+  notifications Notification[]
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String   // CREATE, UPDATE, DELETE, LOGIN, EXPORT, etc.
+  entity     String   // shipment, voyage, container, expense, etc.
+  entityId   String?
+  details    String?  // JSON string with change details
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  message   String
+  type      String   @default("info") // info, warning, error, success
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+}
+
+// ============================================
+// SETTINGS MODULE
+// ============================================
+
+model CompanyProfile {
+  id          String @id @default(cuid())
+  name        String
+  legalName   String?
+  taxId       String?
+  address     String?
+  city        String?
+  country     String?
+  phone       String?
+  email       String?
+  website     String?
+  logo        String?
+  baseCurrency String @default("USD")
+  updatedAt   DateTime @updatedAt
+}
+
+model Currency {
+  id        String   @id @default(cuid())
+  code      String   @unique // USD, EUR, GBP, etc.
+  name      String
+  symbol    String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  exchangeRates ExchangeRate[]
+}
+
+model ExchangeRate {
+  id         String   @id @default(cuid())
+  fromCurrency String
+  toCurrency   String
+  rate       Float
+  date       DateTime
+  source     String?  // manual, api
+  currency   Currency @relation(fields: [fromCurrency], references: [code])
+  createdAt  DateTime @default(now())
+}
+
+// ============================================
+// SHIPMENT OPERATIONS MODULE (MODULE 1)
+// ============================================
+
+model Customer {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  type        String   @default("both") // importer, exporter, both
+  email       String?
+  phone       String?
+  address     String?
+  city        String?
+  country     String?
+  taxId       String?
+  creditLimit Float?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  shipments   Shipment[]
+  revenues    ShipmentRevenue[]
+}
+
+model Vendor {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  type        String?  // shipping_line, port, customs, transport, warehouse, other
+  email       String?
+  phone       String?
+  address     String?
+  city        String?
+  country     String?
+  taxId       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  expenses    ShipmentExpense[]
+  voyageExpenses VoyageExpense[]
+}
+
+model Shipment {
+  id                String   @id @default(cuid())
+  shipmentNumber    String   @unique
+  direction         String   @default("import") // import, export
+  transportMode     String   @default("sea") // sea, air, land
+  customerId        String?
+  customer          Customer? @relation(fields: [customerId], references: [id])
+  shipper           String?
+  consignee         String?
+  notifyParty       String?
+  bookingNumber     String?
+  blNumber          String?
+  awbNumber         String?
+  cargoType         String?  // general, hazardous, perishable, oversized
+  imoClass          String?  // IMO or NON-IMO
+  originCountry     String?
+  destinationCountry String?
+  portOfLoading     String?
+  portOfDischarge   String?
+  finalDestination  String?
+  etd               DateTime?
+  eta               DateTime?
+  vesselName        String?
+  voyageNumber      String?
+  freeDays          Int?
+  status            String   @default("draft") // draft, booked, loading, in_transit, arrived, customs_clearance, delivered, cancelled
+  remarks           String?
+  createdBy         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  containers        Container[]
+  expenses          ShipmentExpense[]
+  revenues          ShipmentRevenue[]
+}
+
+model Container {
+  id              String   @id @default(cuid())
+  shipmentId      String
+  shipment        Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  containerNumber String
+  containerType   String   @default("20DC") // 20DC, 40DC, 40HC, Reefer, Open Top, Flat Rack
+  containerSize   String   @default("20") // 20, 40, 45
+  sealNumber      String?
+  grossWeight     Float?
+  netWeight       Float?
+  volume          Float?
+  status          String   @default("empty") // empty, loaded, in_transit, arrived, delivered
+  currentLocation String?
+  deliveryStatus  String   @default("pending") // pending, picked_up, in_transit, delivered, returned
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ShipmentExpense {
+  id            String   @id @default(cuid())
+  shipmentId    String
+  shipment      Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  expenseType   String   // ocean_freight, dthc, othc, railways, x_ray, inspection, customs, fuel, toll, driver_expense, port_charges, handling_charges, warehouse_charges, documentation, agency_charges, miscellaneous
+  vendorId      String?
+  vendor        Vendor?  @relation(fields: [vendorId], references: [id])
+  currency      String   @default("USD")
+  exchangeRate  Float    @default(1)
+  amount        Float
+  tax           Float    @default(0)
+  amountBase    Float?   // amount * exchangeRate (in base currency)
+  taxBase       Float?   // tax * exchangeRate (in base currency)
+  paymentStatus String   @default("pending") // pending, partial, paid
+  invoiceNumber String?
+  notes         String?
+  attachmentUrl String?
+  expenseDate   DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model ShipmentRevenue {
+  id            String   @id @default(cuid())
+  shipmentId    String
+  shipment      Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  customerId    String?
+  customer      Customer? @relation(fields: [customerId], references: [id])
+  revenueType   String   // freight_charges, delivery_charges, customs_charges, documentation_fees, handling_fees, storage_charges, other_charges
+  invoiceNumber String?
+  currency      String   @default("USD")
+  exchangeRate  Float    @default(1)
+  amount        Float
+  tax           Float    @default(0)
+  amountBase    Float?   // amount * exchangeRate (in base currency)
+  taxBase       Float?   // tax * exchangeRate (in base currency)
+  dueDate       DateTime?
+  paymentStatus String   @default("pending") // pending, partial, paid, overdue
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ============================================
+// VOYAGE FINANCE MODULE (MODULE 2)
+// ============================================
+
+model Voyage {
+  id            String   @id @default(cuid())
+  voyageNumber  String   @unique
+  vesselName    String
+  sailingRoute  String?
+  departurePort String?
+  arrivalPort   String?
+  etd           DateTime?
+  eta           DateTime?
+  shippingLine  String?
+  status        String   @default("planned") // planned, loading, departed, in_transit, arrived, completed, cancelled
+  remarks       String?
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  teuRecords    VoyageTEU[]
+  revenues      VoyageRevenue[]
+  expenses      VoyageExpense[]
+}
+
+model VoyageTEU {
+  id                   String  @id @default(cuid())
+  voyageId             String
+  voyage               Voyage  @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+  totalContainers      Int     @default(0)
+  totalTEUs            Int     @default(0)
+  loadedTEUs           Int     @default(0)
+  emptyTEUs            Int     @default(0)
+  twentyFoot           Int     @default(0)
+  fortyFoot            Int     @default(0)
+  fortyFiveFoot        Int     @default(0)
+  reeferUnits          Int     @default(0)
+  specialUnits         Int     @default(0)
+  teuUtilization       Float?  // loadedTEUs / totalTEUs * 100
+  recordedAt           DateTime @default(now())
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model VoyageRevenue {
+  id            String   @id @default(cuid())
+  voyageId      String
+  voyage        Voyage   @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+  revenueType   String   // freight_income, slot_revenue, surcharges, handling_income, service_charges
+  currency      String   @default("USD")
+  exchangeRate  Float    @default(1)
+  amount        Float
+  amountBase    Float?
+  description   String?
+  invoiceNumber String?
+  paymentStatus String   @default("pending") // pending, partial, paid
+  revenueDate   DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model VoyageExpense {
+  id            String   @id @default(cuid())
+  voyageId      String
+  voyage        Voyage   @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+  expenseType   String   // ocean_freight, port_charges, fuel_costs, bunker_costs, canal_fees, rail_costs, customs, x_ray, terminal_handling, agency_costs, documentation, crew_costs, miscellaneous
+  vendorId      String?
+  vendor        Vendor?  @relation(fields: [vendorId], references: [id])
+  currency      String   @default("USD")
+  exchangeRate  Float    @default(1)
+  amount        Float
+  amountBase    Float?
+  description   String?
+  invoiceNumber String?
+  paymentStatus String   @default("pending") // pending, partial, paid
+  expenseDate   DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ============================================
+// FINANCIAL MANAGEMENT MODULE
+// ============================================
+
+model Invoice {
+  id            String   @id @default(cuid())
+  invoiceNumber String   @unique
+  type          String   // receivable, payable
+  entityType    String   // shipment, voyage
+  entityId      String?
+  customerId    String?
+  vendorId      String?
+  currency      String   @default("USD")
+  exchangeRate  Float    @default(1)
+  subtotal      Float
+  taxAmount     Float    @default(0)
+  totalAmount   Float
+  totalBase     Float?
+  dueDate       DateTime?
+  status        String   @default("draft") // draft, sent, partial, paid, overdue, cancelled
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  payments      Payment[]
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  invoiceId     String
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount        Float
+  currency      String   @default("USD")
+  exchangeRate  Float    @default(1)
+  amountBase    Float?
+  paymentMethod String?  // bank_transfer, cash, check, card
+  reference     String?
+  paymentDate   DateTime @default(now())
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ============================================
+// DOCUMENT MANAGEMENT MODULE
+// ============================================
+
+model Document {
+  id            String   @id @default(cuid())
+  entityType    String   // shipment, voyage, invoice
+  entityId      String?
+  documentType  String   // bl_copy, invoice, packing_list, customs, delivery_order, contract, receipt, other
+  name          String
+  fileUrl       String
+  fileSize      Int?
+  mimeType      String?
+  version       Int      @default(1)
+  uploadedBy    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
