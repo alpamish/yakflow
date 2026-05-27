@@ -197,13 +197,18 @@ export function DashboardPage() {
     fetchDashboard()
   }, [])
 
-  // Format current date
-  const currentDate = new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
+  // Format current date — use state to avoid SSR/client hydration mismatch
+  const [currentDate, setCurrentDate] = useState('')
+  useEffect(() => {
+    setCurrentDate(
+      new Date().toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    )
+  }, [])
 
   // Transform expense breakdown from object to array for recharts
   const expenseBreakdownData = data
@@ -339,7 +344,7 @@ export function DashboardPage() {
           </div>
           <div className="flex items-center gap-2 text-emerald-100">
             <Calendar className="size-4" />
-            <span className="text-sm font-medium">{currentDate}</span>
+            <span className="text-sm font-medium">{currentDate || '\u2026'}</span>
           </div>
         </div>
       </div>
