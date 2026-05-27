@@ -43,6 +43,10 @@ export async function GET(
   try {
     const { id } = await params
 
+    // Fetch base currency from company profile
+    const companyProfile = await db.companyProfile.findFirst()
+    const baseCurrency = companyProfile?.baseCurrency || 'USD'
+
     // Fetch voyage data
     const voyage = await db.voyage.findUnique({
       where: { id },
@@ -159,6 +163,7 @@ export async function GET(
       revenueTotalsByCurrency,
       expenseGrandTotal,
       revenueGrandTotal,
+      baseCurrency,
     }
 
     // Write data JSON to temp file
@@ -214,10 +219,10 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.pdfmetrics import registerFontFamily
 import os
 
-# Register fonts (Liberation Serif = Times New Roman metric-compatible)
-pdfmetrics.registerFont(TTFont('LiberationSerif', '/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf'))
-pdfmetrics.registerFont(TTFont('LiberationSerif-Bold', '/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf'))
-registerFontFamily('LiberationSerif', normal='LiberationSerif', bold='LiberationSerif-Bold')
+# Register fonts (DejaVu Serif for full Unicode/currency symbol support)
+pdfmetrics.registerFont(TTFont('DejaVuSerif', '/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf'))
+pdfmetrics.registerFont(TTFont('DejaVuSerif-Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf'))
+registerFontFamily('DejaVuSerif', normal='DejaVuSerif', bold='DejaVuSerif-Bold')
 
 # Color Palette
 ACCENT       = colors.HexColor('#1f7692')
@@ -239,70 +244,114 @@ output_path = ${JSON.stringify(outputPath)}
 
 # Styles
 title_style = ParagraphStyle(
-    name='Title', fontName='LiberationSerif', fontSize=22,
+    name='Title', fontName='DejaVuSerif', fontSize=22,
     leading=28, textColor=ACCENT, alignment=TA_LEFT, spaceAfter=4
 )
 subtitle_style = ParagraphStyle(
-    name='Subtitle', fontName='LiberationSerif', fontSize=12,
+    name='Subtitle', fontName='DejaVuSerif', fontSize=12,
     leading=16, textColor=TEXT_MUTED, alignment=TA_LEFT, spaceAfter=12
 )
 section_style = ParagraphStyle(
-    name='Section', fontName='LiberationSerif', fontSize=14,
+    name='Section', fontName='DejaVuSerif', fontSize=14,
     leading=18, textColor=TEXT_PRIMARY, alignment=TA_LEFT, spaceBefore=16, spaceAfter=8
 )
 header_style = ParagraphStyle(
-    name='TableHeader', fontName='LiberationSerif', fontSize=9,
+    name='TableHeader', fontName='DejaVuSerif', fontSize=9,
     leading=12, textColor=colors.white, alignment=TA_CENTER
 )
 header_left_style = ParagraphStyle(
-    name='TableHeaderLeft', fontName='LiberationSerif', fontSize=9,
+    name='TableHeaderLeft', fontName='DejaVuSerif', fontSize=9,
     leading=12, textColor=colors.white, alignment=TA_LEFT
 )
 cell_style = ParagraphStyle(
-    name='TableCell', fontName='LiberationSerif', fontSize=9,
+    name='TableCell', fontName='DejaVuSerif', fontSize=9,
     leading=12, textColor=TEXT_PRIMARY, alignment=TA_LEFT
 )
 cell_right_style = ParagraphStyle(
-    name='TableCellRight', fontName='LiberationSerif', fontSize=9,
+    name='TableCellRight', fontName='DejaVuSerif', fontSize=9,
     leading=12, textColor=TEXT_PRIMARY, alignment=TA_RIGHT
 )
 cell_bold_style = ParagraphStyle(
-    name='TableCellBold', fontName='LiberationSerif', fontSize=9,
+    name='TableCellBold', fontName='DejaVuSerif', fontSize=9,
     leading=12, textColor=TEXT_PRIMARY, alignment=TA_LEFT
 )
 cell_bold_right_style = ParagraphStyle(
-    name='TableCellBoldRight', fontName='LiberationSerif', fontSize=9,
+    name='TableCellBoldRight', fontName='DejaVuSerif', fontSize=9,
     leading=12, textColor=TEXT_PRIMARY, alignment=TA_RIGHT
 )
 total_cell_style = ParagraphStyle(
-    name='TotalCell', fontName='LiberationSerif', fontSize=10,
+    name='TotalCell', fontName='DejaVuSerif', fontSize=10,
     leading=13, textColor=colors.white, alignment=TA_LEFT
 )
 total_cell_right_style = ParagraphStyle(
-    name='TotalCellRight', fontName='LiberationSerif', fontSize=10,
+    name='TotalCellRight', fontName='DejaVuSerif', fontSize=10,
     leading=13, textColor=colors.white, alignment=TA_RIGHT
 )
 metric_label_style = ParagraphStyle(
-    name='MetricLabel', fontName='LiberationSerif', fontSize=9,
+    name='MetricLabel', fontName='DejaVuSerif', fontSize=9,
     leading=12, textColor=TEXT_MUTED, alignment=TA_CENTER
 )
 metric_value_style = ParagraphStyle(
-    name='MetricValue', fontName='LiberationSerif', fontSize=14,
+    name='MetricValue', fontName='DejaVuSerif', fontSize=14,
     leading=18, textColor=TEXT_PRIMARY, alignment=TA_CENTER
 )
 footer_style = ParagraphStyle(
-    name='Footer', fontName='LiberationSerif', fontSize=8,
+    name='Footer', fontName='DejaVuSerif', fontSize=8,
     leading=10, textColor=TEXT_MUTED, alignment=TA_CENTER
 )
 info_style = ParagraphStyle(
-    name='Info', fontName='LiberationSerif', fontSize=10,
+    name='Info', fontName='DejaVuSerif', fontSize=10,
     leading=14, textColor=TEXT_MUTED, alignment=TA_LEFT, spaceAfter=8
 )
 
-def fmt(amount):
+CURRENCY_SYMBOLS = {
+    'USD': '$',
+    'EUR': '\u20ac',
+    'GBP': '\u00a3',
+    'RUB': '\u20bd',
+    'CNY': '\u00a5',
+    'JPY': '\u00a5',
+    'KRW': '\u20a9',
+    'INR': '\u20b9',
+    'CHF': 'CHF',
+    'CAD': 'C$',
+    'AUD': 'A$',
+    'NZD': 'NZ$',
+    'SGD': 'S$',
+    'HKD': 'HK$',
+    'SEK': 'kr',
+    'NOK': 'kr',
+    'DKK': 'kr',
+    'PLN': '\u007a\u0142',
+    'CZK': 'K\u010d',
+    'HUF': 'Ft',
+    'TRY': '\u20ba',
+    'BRL': 'R$',
+    'MXN': 'MX$',
+    'ZAR': 'R',
+    'AED': 'AED',
+    'SAR': 'SAR',
+    'THB': '\u0e3f',
+    'MYR': 'RM',
+    'IDR': 'Rp',
+    'PHP': '\u20b1',
+    'VND': '\u20ab',
+    'TWD': 'NT$',
+    'ILS': '\u20aa',
+    'EGP': 'E\u00a3',
+    'NGN': '\u20a6',
+    'KES': 'KSh',
+    'GHS': '\u20b5',
+}
+
+def get_symbol(currency_code):
+    return CURRENCY_SYMBOLS.get(currency_code, currency_code + ' ')
+
+def fmt(amount, currency='USD'):
+    symbol = get_symbol(currency)
     if abs(amount) >= 10000:
-        return "$" + "{:,.0f}".format(amount)
-    return "$" + "{:,.2f}".format(amount)
+        return symbol + "{:,.0f}".format(amount)
+    return symbol + "{:,.2f}".format(amount)
 
 def pct_str(val):
     return "{:.1f}%".format(val)
@@ -347,16 +396,16 @@ metrics_data = [[
     Paragraph('NET PROFIT', metric_label_style),
     Paragraph('PROFIT MARGIN', metric_label_style),
 ]]
-rev_style = ParagraphStyle(name='RevVal', fontName='LiberationSerif', fontSize=14, leading=18, textColor=EMERALD, alignment=TA_CENTER)
-exp_style = ParagraphStyle(name='ExpVal', fontName='LiberationSerif', fontSize=14, leading=18, textColor=RED, alignment=TA_CENTER)
+rev_style = ParagraphStyle(name='RevVal', fontName='DejaVuSerif', fontSize=14, leading=18, textColor=EMERALD, alignment=TA_CENTER)
+exp_style = ParagraphStyle(name='ExpVal', fontName='DejaVuSerif', fontSize=14, leading=18, textColor=RED, alignment=TA_CENTER)
 profit_color = EMERALD if data["netProfit"] >= 0 else RED
-profit_style = ParagraphStyle(name='ProfitVal', fontName='LiberationSerif', fontSize=14, leading=18, textColor=profit_color, alignment=TA_CENTER)
-margin_style = ParagraphStyle(name='MarginVal', fontName='LiberationSerif', fontSize=14, leading=18, textColor=profit_color, alignment=TA_CENTER)
+profit_style = ParagraphStyle(name='ProfitVal', fontName='DejaVuSerif', fontSize=14, leading=18, textColor=profit_color, alignment=TA_CENTER)
+margin_style = ParagraphStyle(name='MarginVal', fontName='DejaVuSerif', fontSize=14, leading=18, textColor=profit_color, alignment=TA_CENTER)
 
 metrics_data.append([
-    Paragraph('<b>' + fmt(data["totalRevenue"]) + '</b>', rev_style),
-    Paragraph('<b>' + fmt(data["totalExpenses"]) + '</b>', exp_style),
-    Paragraph('<b>' + fmt(data["netProfit"]) + '</b>', profit_style),
+    Paragraph('<b>' + fmt(data["totalRevenue"], data["baseCurrency"]) + '</b>', rev_style),
+    Paragraph('<b>' + fmt(data["totalExpenses"], data["baseCurrency"]) + '</b>', exp_style),
+    Paragraph('<b>' + fmt(data["netProfit"], data["baseCurrency"]) + '</b>', profit_style),
     Paragraph('<b>' + pct_str(data["profitMargin"]) + '</b>', margin_style),
 ])
 
@@ -419,7 +468,7 @@ rev_col_widths = [type_w, base_w] + [curr_w] * len(rev_currencies) + [pct_w]
 
 rev_header = [
     Paragraph('<b>TYPE</b>', header_left_style),
-    Paragraph('<b>REVENUE (BASE)</b>', header_style),
+    Paragraph('<b>REVENUE (' + data['baseCurrency'] + ')</b>', header_style),
 ]
 for c in rev_currencies:
     rev_header.append(Paragraph('<b>' + c + ' AMOUNT</b>', header_style))
@@ -431,20 +480,20 @@ for item in data["sortedRevenueTypes"]:
     pct = (item["total"] / data["revenueGrandTotal"] * 100) if data["revenueGrandTotal"] > 0 else 0
     row = [
         Paragraph(item["label"], cell_style),
-        Paragraph(fmt(item["total"]), cell_right_style),
+        Paragraph(fmt(item["total"], data['baseCurrency']), cell_right_style),
     ]
     for c in rev_currencies:
         val = item["byCurrency"].get(c, 0)
-        row.append(Paragraph(fmt(val) if val else "\\u2014", cell_right_style))
+        row.append(Paragraph(fmt(val, c) if val else "\\u2014", cell_right_style))
     row.append(Paragraph(pct_str(pct), cell_right_style))
     rev_table_data.append(row)
 
 rev_total_row = [
     Paragraph('<b>TOTAL</b>', total_cell_style),
-    Paragraph('<b>' + fmt(data["revenueGrandTotal"]) + '</b>', total_cell_right_style),
+    Paragraph('<b>' + fmt(data["revenueGrandTotal"], data['baseCurrency']) + '</b>', total_cell_right_style),
 ]
 for c in rev_currencies:
-    rev_total_row.append(Paragraph('<b>' + fmt(data["revenueTotalsByCurrency"].get(c, 0)) + '</b>', total_cell_right_style))
+    rev_total_row.append(Paragraph('<b>' + fmt(data["revenueTotalsByCurrency"].get(c, 0), c) + '</b>', total_cell_right_style))
 rev_total_row.append(Paragraph('<b>100%</b>', total_cell_right_style))
 rev_table_data.append(rev_total_row)
 
@@ -479,7 +528,7 @@ exp_col_widths = [type_w, base_w] + [curr_w_exp] * len(exp_currencies) + [pct_w]
 
 exp_header = [
     Paragraph('<b>TYPE</b>', header_left_style),
-    Paragraph('<b>COSTS (BASE)</b>', header_style),
+    Paragraph('<b>COSTS (' + data['baseCurrency'] + ')</b>', header_style),
 ]
 for c in exp_currencies:
     exp_header.append(Paragraph('<b>' + c + ' AMOUNT</b>', header_style))
@@ -491,20 +540,20 @@ for item in data["sortedExpenseTypes"]:
     pct = (item["total"] / data["expenseGrandTotal"] * 100) if data["expenseGrandTotal"] > 0 else 0
     row = [
         Paragraph(item["label"], cell_style),
-        Paragraph(fmt(item["total"]), cell_right_style),
+        Paragraph(fmt(item["total"], data['baseCurrency']), cell_right_style),
     ]
     for c in exp_currencies:
         val = item["byCurrency"].get(c, 0)
-        row.append(Paragraph(fmt(val) if val else "\\u2014", cell_right_style))
+        row.append(Paragraph(fmt(val, c) if val else "\\u2014", cell_right_style))
     row.append(Paragraph(pct_str(pct), cell_right_style))
     exp_table_data.append(row)
 
 exp_total_row = [
     Paragraph('<b>TOTAL</b>', total_cell_style),
-    Paragraph('<b>' + fmt(data["expenseGrandTotal"]) + '</b>', total_cell_right_style),
+    Paragraph('<b>' + fmt(data["expenseGrandTotal"], data['baseCurrency']) + '</b>', total_cell_right_style),
 ]
 for c in exp_currencies:
-    exp_total_row.append(Paragraph('<b>' + fmt(data["expenseTotalsByCurrency"].get(c, 0)) + '</b>', total_cell_right_style))
+    exp_total_row.append(Paragraph('<b>' + fmt(data["expenseTotalsByCurrency"].get(c, 0), c) + '</b>', total_cell_right_style))
 exp_total_row.append(Paragraph('<b>100%</b>', total_cell_right_style))
 exp_table_data.append(exp_total_row)
 
@@ -537,22 +586,22 @@ exp_pct_rev = (data["totalExpenses"] / data["totalRevenue"] * 100) if data["tota
 comp_data = [
     [
         Paragraph('<b>METRIC</b>', header_style),
-        Paragraph('<b>AMOUNT (USD)</b>', header_style),
+        Paragraph('<b>AMOUNT (' + data['baseCurrency'] + ')</b>', header_style),
         Paragraph('<b>% OF REVENUE</b>', header_style),
     ],
     [
         Paragraph('Gross Revenue', cell_style),
-        Paragraph(fmt(data["totalRevenue"]), cell_right_style),
+        Paragraph(fmt(data["totalRevenue"], data['baseCurrency']), cell_right_style),
         Paragraph('100%', cell_right_style),
     ],
     [
         Paragraph('Total Expenses', cell_style),
-        Paragraph(fmt(data["totalExpenses"]), cell_right_style),
+        Paragraph(fmt(data["totalExpenses"], data['baseCurrency']), cell_right_style),
         Paragraph(pct_str(exp_pct_rev), cell_right_style),
     ],
     [
         Paragraph('<b>Net Profit</b>', cell_bold_style),
-        Paragraph('<b>' + fmt(data["netProfit"]) + '</b>', cell_bold_right_style),
+        Paragraph('<b>' + fmt(data["netProfit"], data['baseCurrency']) + '</b>', cell_bold_right_style),
         Paragraph('<b>' + pct_str(data["profitMargin"]) + '</b>', cell_bold_right_style),
     ],
 ]
@@ -588,19 +637,19 @@ if data.get("latestTeu") and data["latestTeu"]["loadedTEUs"] > 0:
     teu_comp_data = [
         [
             Paragraph('<b>METRIC</b>', header_style),
-            Paragraph('<b>PER TEU (USD)</b>', header_style),
+            Paragraph('<b>PER TEU (' + data['baseCurrency'] + ')</b>', header_style),
         ],
         [
             Paragraph('Revenue per TEU', cell_style),
-            Paragraph(fmt(revenuePerTEU), cell_right_style),
+            Paragraph(fmt(revenuePerTEU, data['baseCurrency']), cell_right_style),
         ],
         [
             Paragraph('Expense per TEU', cell_style),
-            Paragraph(fmt(expensePerTEU), cell_right_style),
+            Paragraph(fmt(expensePerTEU, data['baseCurrency']), cell_right_style),
         ],
         [
             Paragraph('<b>Profit per TEU</b>', cell_bold_style),
-            Paragraph('<b>' + fmt(profitPerTEU) + '</b>', cell_bold_right_style),
+            Paragraph('<b>' + fmt(profitPerTEU, data['baseCurrency']) + '</b>', cell_bold_right_style),
         ],
     ]
 
