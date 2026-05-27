@@ -60,7 +60,7 @@ interface ShipmentSummary {
   status: string
   totalRevenues: number
   totalExpenses: number
-  containers: { id: string }[]
+  containerCount: number
 }
 
 const statusLabels: Record<string, string> = {
@@ -179,7 +179,7 @@ export function ShipmentReports() {
                           {statusLabels[s.status] || s.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-center">{s.containers.length}</TableCell>
+                      <TableCell className="text-center">{s.containerCount ?? 0}</TableCell>
                       <TableCell className="text-right">{currencyFormatter.format(s.totalRevenues)}</TableCell>
                       <TableCell className="text-right">{currencyFormatter.format(s.totalExpenses)}</TableCell>
                       <TableCell className={`text-right font-medium ${profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -375,7 +375,7 @@ export function ShipmentReports() {
                   <TableRow key={s.id}>
                     <TableCell className="font-medium">{s.shipmentNumber}</TableCell>
                     <TableCell>{s.customer?.name || '—'}</TableCell>
-                    <TableCell className="text-center">{s.containers.length}</TableCell>
+                    <TableCell className="text-center">{s.containerCount ?? 0}</TableCell>
                     <TableCell className="text-sm">
                       {s.originCountry || '—'} → {s.destinationCountry || '—'}
                     </TableCell>
@@ -385,8 +385,8 @@ export function ShipmentReports() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      {s.containers.length > 0
-                        ? currencyFormatter.format(s.totalRevenues / s.containers.length)
+                      {(s.containerCount ?? 0) > 0
+                        ? currencyFormatter.format(s.totalRevenues / s.containerCount)
                         : '—'}
                     </TableCell>
                   </TableRow>
