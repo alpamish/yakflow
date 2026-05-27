@@ -18,6 +18,7 @@ import {
   DollarSign,
   Container,
   Thermometer,
+  FileDown,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -240,6 +241,29 @@ export function VoyageDetail() {
   // Vendors for expense form
   const [vendors, setVendors] = useState<Array<{ id: string; name: string }>>([])
   const [submitting, setSubmitting] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+
+  const handleDownloadPdf = async () => {
+    if (!selectedVoyageId) return
+    setDownloadingPdf(true)
+    try {
+      const res = await fetch(`/api/voyages/${selectedVoyageId}/pdf`)
+      if (!res.ok) throw new Error('Failed to generate PDF')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `voyage-${voyage?.voyageNumber || 'summary'}-report.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch {
+      console.error('Failed to download PDF')
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
 
   const fetchVoyage = useCallback(async () => {
     if (!selectedVoyageId) return
@@ -447,6 +471,10 @@ export function VoyageDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={downloadingPdf}>
+            {downloadingPdf ? <Loader2 className="size-4 mr-2 animate-spin" /> : <FileDown className="size-4 mr-2" />}
+            PDF
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowEdit(true)}>
             <Pencil className="size-4 mr-2" />
             Edit
@@ -1045,14 +1073,20 @@ export function VoyageDetail() {
             return (
               <Card className="overflow-hidden">
                 <CardHeader>
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-lg p-2 bg-amber-50 dark:bg-amber-950/30">
-                      <CreditCard className="size-5 text-amber-600" />
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-lg p-2 bg-amber-50 dark:bg-amber-950/30">
+                        <CreditCard className="size-5 text-amber-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">Voyage Cost Summary</CardTitle>
+                        <CardDescription>Cost breakdown by expense category — {voyage.voyageNumber}</CardDescription>
+                      </div>
                     </div>
-                    <div>
-                      <CardTitle className="text-lg">Voyage Cost Summary</CardTitle>
-                      <CardDescription>Cost breakdown by expense category — {voyage.voyageNumber}</CardDescription>
-                    </div>
+                    <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={downloadingPdf}>
+                      {downloadingPdf ? <Loader2 className="size-4 mr-2 animate-spin" /> : <FileDown className="size-4 mr-2" />}
+                      Export PDF
+                    </Button>
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
