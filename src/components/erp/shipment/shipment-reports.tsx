@@ -7,6 +7,7 @@ import {
   FileText,
   Printer,
   Search,
+  Loader2,
 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -85,6 +86,8 @@ export function ShipmentReports() {
   const [endDate, setEndDate] = useState('')
   const [data, setData] = useState<ShipmentSummary[]>([])
   const [loading, setLoading] = useState(false)
+  const [exportingExcel, setExportingExcel] = useState(false)
+  const [exportingPdf, setExportingPdf] = useState(false)
 
   const fetchReport = useCallback(async () => {
     setLoading(true)
@@ -111,6 +114,73 @@ export function ShipmentReports() {
 
   const handlePrint = () => {
     window.print()
+  }
+
+  const handleExportExcel = async () => {
+    setExportingExcel(true)
+    try {
+      const params = new URLSearchParams({ reportType })
+      if (startDate) params.set('startDate', startDate)
+      if (endDate) params.set('endDate', endDate)
+
+      const res = await fetch(`/api/shipments/export-excel?${params}`)
+      if (!res.ok) throw new Error('Export failed')
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+
+      // Get filename from Content-Disposition header
+      const disposition = res.headers.get('Content-Disposition')
+      const filename = disposition
+        ? disposition.split('filename=')[1]?.replace(/"/g, '')
+        : `${reportType}_report.xlsx`
+
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (err) {
+      console.error('Excel export failed:', err)
+      alert('Failed to export Excel. Please try again.')
+    } finally {
+      setExportingExcel(false)
+    }
+  }
+
+  const handleExportPdf = async () => {
+    setExportingPdf(true)
+    try {
+      const params = new URLSearchParams({ reportType })
+      if (startDate) params.set('startDate', startDate)
+      if (endDate) params.set('endDate', endDate)
+
+      const res = await fetch(`/api/shipments/export-pdf?${params}`)
+      if (!res.ok) throw new Error('PDF export failed')
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+
+      const disposition = res.headers.get('Content-Disposition')
+      const filename = disposition
+        ? disposition.split('filename=')[1]?.replace(/"/g, '')
+        : `${reportType}_report.pdf`
+
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (err) {
+      console.error('PDF export failed:', err)
+      alert('Failed to export PDF. Please try again.')
+    } finally {
+      setExportingPdf(false)
+    }
   }
 
   const renderReportTable = () => {
@@ -484,12 +554,32 @@ export function ShipmentReports() {
               Generate
             </Button>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1" title="Export Excel (placeholder)">
-                <Download className="size-4 mr-1" />
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={handleExportExcel}
+                disabled={exportingExcel || data.length === 0}
+              >
+                {exportingExcel ? (
+                  <Loader2 className="size-4 mr-1 animate-spin" />
+                ) : (
+                  <Download className="size-4 mr-1" />
+                )}
                 Excel
               </Button>
-              <Button variant="outline" size="sm" className="flex-1" title="Export PDF (placeholder)">
-                <FileText className="size-4 mr-1" />
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={handleExportPdf}
+                disabled={exportingPdf || data.length === 0}
+              >
+                {exportingPdf ? (
+                  <Loader2 className="size-4 mr-1 animate-spin" />
+                ) : (
+                  <FileText className="size-4 mr-1" />
+                )}
                 PDF
               </Button>
               <Button variant="outline" size="sm" className="flex-1" onClick={handlePrint}>
