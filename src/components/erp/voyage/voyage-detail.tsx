@@ -787,6 +787,153 @@ export function VoyageDetail() {
 
         {/* Revenue Tab */}
         <TabsContent value="revenue" className="space-y-6 mt-6">
+          {/* Revenue Summary — spreadsheet-style breakdown */}
+          {voyage.revenues.length > 0 && (() => {
+            // Group revenues by type
+            const revenuesByType: Record<string, { total: number; byCurrency: Record<string, number> }> = {}
+            voyage.revenues.forEach((rev) => {
+              const type = rev.revenueType
+              const amountBase = rev.amountBase || 0
+              if (!revenuesByType[type]) {
+                revenuesByType[type] = { total: 0, byCurrency: {} }
+              }
+              revenuesByType[type].total += amountBase
+              if (!revenuesByType[type].byCurrency[rev.currency]) {
+                revenuesByType[type].byCurrency[rev.currency] = 0
+              }
+              revenuesByType[type].byCurrency[rev.currency] += rev.amount
+            })
+
+            // Get unique currencies across all revenues
+            const allCurrencies = [...new Set(voyage.revenues.map(r => r.currency))].sort()
+
+            // Sort revenue types by total descending
+            const sortedTypes = Object.entries(revenuesByType).sort(([, a], [, b]) => b.total - a.total)
+
+            // Calculate totals per currency
+            const totalsByCurrency: Record<string, number> = {}
+            allCurrencies.forEach(c => { totalsByCurrency[c] = 0 })
+            let grandTotal = 0
+            sortedTypes.forEach(([, data]) => {
+              grandTotal += data.total
+              allCurrencies.forEach(c => {
+                totalsByCurrency[c] += data.byCurrency[c] || 0
+              })
+            })
+
+            return (
+              <Card className="overflow-hidden">
+                <CardHeader>
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg p-2 bg-emerald-50 dark:bg-emerald-950/30">
+                      <Banknote className="size-5 text-emerald-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">Revenue Summary</CardTitle>
+                      <CardDescription>Revenue breakdown by type — {voyage.voyageNumber}</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-50 dark:hover:bg-emerald-950/30">
+                          <TableHead className="font-bold text-emerald-900 dark:text-emerald-100 pl-6 min-w-[200px]">TYPE</TableHead>
+                          <TableHead className="font-bold text-emerald-900 dark:text-emerald-100 text-right min-w-[140px]">REVENUE (BASE)</TableHead>
+                          {allCurrencies.map(c => (
+                            <TableHead key={c} className="font-bold text-emerald-900 dark:text-emerald-100 text-right min-w-[130px]">
+                              {c} AMOUNT
+                            </TableHead>
+                          ))}
+                          <TableHead className="font-bold text-emerald-900 dark:text-emerald-100 text-right min-w-[100px]">% OF TOTAL</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {sortedTypes.map(([type, data], idx) => {
+                          const label = REVENUE_TYPES.find(t => t.value === type)?.label || type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                          const pct = grandTotal > 0 ? (data.total / grandTotal) * 100 : 0
+                          return (
+                            <TableRow
+                              key={type}
+                              className={idx % 2 === 0 ? 'bg-muted/30 hover:bg-muted/40' : 'hover:bg-muted/40'}
+                            >
+                              <TableCell className="font-medium pl-6">
+                                <div className="flex items-center gap-2">
+                                  <div className="size-2 rounded-full" style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }} />
+                                  {label}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right font-mono font-semibold">
+                                {formatCurrency(data.total)}
+                              </TableCell>
+                              {allCurrencies.map(c => (
+                                <TableCell key={c} className="text-right font-mono">
+                                  {data.byCurrency[c]
+                                    ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(data.byCurrency[c])
+                                    : '—'
+                                  }
+                                </TableCell>
+                              ))}
+                              <TableCell className="text-right">
+                                <Badge
+                                  variant="secondary"
+                                  className={
+                                    pct > 50
+                                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                      : pct > 25
+                                        ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400'
+                                        : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                                  }
+                                >
+                                  {pct.toFixed(1)}%
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                        {/* TOTAL ROW — highlighted */}
+                        <TableRow className="bg-emerald-500 hover:bg-emerald-500 dark:bg-emerald-600 dark:hover:bg-emerald-600 border-t-2 border-emerald-600">
+                          <TableCell className="font-bold text-white pl-6 text-base">
+                            TOTAL
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-bold text-white text-base">
+                            {formatCurrency(grandTotal)}
+                          </TableCell>
+                          {allCurrencies.map(c => (
+                            <TableCell key={c} className="text-right font-mono font-bold text-white text-base">
+                              {new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(totalsByCurrency[c] || 0)}
+                            </TableCell>
+                          ))}
+                          <TableCell className="text-right font-bold text-white text-base">
+                            100%
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
+                  {/* Summary bar below table */}
+                  <div className="px-6 py-4 bg-emerald-50 dark:bg-emerald-950/20 border-t border-emerald-200 dark:border-emerald-800">
+                    <div className="flex flex-wrap items-center gap-6 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Revenue Types: </span>
+                        <span className="font-semibold">{sortedTypes.length}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Currencies: </span>
+                        <span className="font-semibold">{allCurrencies.join(', ')}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Total Base Revenue: </span>
+                        <span className="font-bold text-emerald-600">{formatCurrency(grandTotal)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })()}
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
@@ -861,6 +1008,207 @@ export function VoyageDetail() {
 
         {/* Expenses Tab */}
         <TabsContent value="expenses" className="space-y-6 mt-6">
+          {/* Voyage Cost Summary — similar to spreadsheet-style breakdown */}
+          {voyage.expenses.length > 0 && (() => {
+            // Group expenses by type
+            const expensesByType: Record<string, { total: number; byCurrency: Record<string, number> }> = {}
+            voyage.expenses.forEach((exp) => {
+              const type = exp.expenseType
+              const amountBase = exp.amountBase || 0
+              if (!expensesByType[type]) {
+                expensesByType[type] = { total: 0, byCurrency: {} }
+              }
+              expensesByType[type].total += amountBase
+              if (!expensesByType[type].byCurrency[exp.currency]) {
+                expensesByType[type].byCurrency[exp.currency] = 0
+              }
+              expensesByType[type].byCurrency[exp.currency] += exp.amount
+            })
+
+            // Get unique currencies across all expenses
+            const allCurrencies = [...new Set(voyage.expenses.map(e => e.currency))].sort()
+
+            // Sort expense types by total descending
+            const sortedTypes = Object.entries(expensesByType).sort(([, a], [, b]) => b.total - a.total)
+
+            // Calculate totals per currency
+            const totalsByCurrency: Record<string, number> = {}
+            allCurrencies.forEach(c => { totalsByCurrency[c] = 0 })
+            let grandTotal = 0
+            sortedTypes.forEach(([, data]) => {
+              grandTotal += data.total
+              allCurrencies.forEach(c => {
+                totalsByCurrency[c] += data.byCurrency[c] || 0
+              })
+            })
+
+            return (
+              <Card className="overflow-hidden">
+                <CardHeader>
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg p-2 bg-amber-50 dark:bg-amber-950/30">
+                      <CreditCard className="size-5 text-amber-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">Voyage Cost Summary</CardTitle>
+                      <CardDescription>Cost breakdown by expense category — {voyage.voyageNumber}</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-50 dark:hover:bg-amber-950/30">
+                          <TableHead className="font-bold text-amber-900 dark:text-amber-100 pl-6 min-w-[200px]">TYPE</TableHead>
+                          <TableHead className="font-bold text-amber-900 dark:text-amber-100 text-right min-w-[140px]">COSTS (BASE)</TableHead>
+                          {allCurrencies.map(c => (
+                            <TableHead key={c} className="font-bold text-amber-900 dark:text-amber-100 text-right min-w-[130px]">
+                              {c} AMOUNT
+                            </TableHead>
+                          ))}
+                          <TableHead className="font-bold text-amber-900 dark:text-amber-100 text-right min-w-[100px]">% OF TOTAL</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {sortedTypes.map(([type, data], idx) => {
+                          const label = EXPENSE_TYPES.find(t => t.value === type)?.label || type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                          const pct = grandTotal > 0 ? (data.total / grandTotal) * 100 : 0
+                          const isHighlight = type === 'agency_costs' || type === 'crew_costs' || type === 'miscellaneous'
+                          return (
+                            <TableRow
+                              key={type}
+                              className={
+                                isHighlight
+                                  ? 'bg-yellow-50 dark:bg-yellow-950/20 hover:bg-yellow-50 dark:hover:bg-yellow-950/20'
+                                  : idx % 2 === 0
+                                    ? 'bg-muted/30 hover:bg-muted/40'
+                                    : 'hover:bg-muted/40'
+                              }
+                            >
+                              <TableCell className="font-medium pl-6">
+                                <div className="flex items-center gap-2">
+                                  <div className="size-2 rounded-full" style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }} />
+                                  {label}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right font-mono font-semibold">
+                                {formatCurrency(data.total)}
+                              </TableCell>
+                              {allCurrencies.map(c => (
+                                <TableCell key={c} className="text-right font-mono">
+                                  {data.byCurrency[c]
+                                    ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(data.byCurrency[c])
+                                    : '—'
+                                  }
+                                </TableCell>
+                              ))}
+                              <TableCell className="text-right">
+                                <Badge
+                                  variant="secondary"
+                                  className={
+                                    pct > 30
+                                      ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                      : pct > 15
+                                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                        : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                  }
+                                >
+                                  {pct.toFixed(1)}%
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                        {/* TOTAL ROW — highlighted */}
+                        <TableRow className="bg-amber-500 hover:bg-amber-500 dark:bg-amber-600 dark:hover:bg-amber-600 border-t-2 border-amber-600">
+                          <TableCell className="font-bold text-white pl-6 text-base">
+                            TOTAL
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-bold text-white text-base">
+                            {formatCurrency(grandTotal)}
+                          </TableCell>
+                          {allCurrencies.map(c => (
+                            <TableCell key={c} className="text-right font-mono font-bold text-white text-base">
+                              {new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(totalsByCurrency[c] || 0)}
+                            </TableCell>
+                          ))}
+                          <TableCell className="text-right font-bold text-white text-base">
+                            100%
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
+                  {/* Summary bar below table */}
+                  <div className="px-6 py-4 bg-amber-50 dark:bg-amber-950/20 border-t border-amber-200 dark:border-amber-800">
+                    <div className="flex flex-wrap items-center gap-6 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Expense Categories: </span>
+                        <span className="font-semibold">{sortedTypes.length}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Currencies: </span>
+                        <span className="font-semibold">{allCurrencies.join(', ')}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Total Base Cost: </span>
+                        <span className="font-bold text-red-600">{formatCurrency(grandTotal)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })()}
+
+          {/* Revenue vs Expense Comparison Summary */}
+          {voyage.expenses.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card className="border-emerald-200 dark:border-emerald-800">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg p-2.5 bg-emerald-50 dark:bg-emerald-950/30">
+                      <TrendingUp className="size-5 text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Total Revenue</p>
+                      <p className="text-xl font-bold text-emerald-600">{formatCurrency(totalRevenue)}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-red-200 dark:border-red-800">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg p-2.5 bg-red-50 dark:bg-red-950/30">
+                      <CreditCard className="size-5 text-red-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Total Expenses</p>
+                      <p className="text-xl font-bold text-red-600">{formatCurrency(totalExpenses)}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className={(totalRevenue - totalExpenses) >= 0 ? 'border-emerald-200 dark:border-emerald-800' : 'border-red-200 dark:border-red-800'}>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`rounded-lg p-2.5 ${(totalRevenue - totalExpenses) >= 0 ? 'bg-emerald-50 dark:bg-emerald-950/30' : 'bg-red-50 dark:bg-red-950/30'}`}>
+                      <DollarSign className={`size-5 ${(totalRevenue - totalExpenses) >= 0 ? 'text-emerald-600' : 'text-red-600'}`} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Net {totalRevenue - totalExpenses >= 0 ? 'Profit' : 'Loss'}</p>
+                      <p className={`text-xl font-bold ${(totalRevenue - totalExpenses) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {formatCurrency(totalRevenue - totalExpenses)}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
