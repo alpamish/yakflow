@@ -4,6 +4,7 @@ import { create } from 'zustand'
 
 export type PageId =
   | 'dashboard'
+  | 'summary'
   | 'shipments'
   | 'shipment-detail'
   | 'container-tracking'

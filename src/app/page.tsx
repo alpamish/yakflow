@@ -5,6 +5,7 @@ import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { ERPSidebar } from '@/components/erp/sidebar'
 import { ERPHeader } from '@/components/erp/header'
 import { DashboardPage } from '@/components/erp/dashboard/dashboard-page'
+import { SummaryPage } from '@/components/erp/summary/summary-page'
 import { PlaceholderPage, pageConfigMap } from '@/components/erp/placeholder-page'
 import { ShipmentsList } from '@/components/erp/shipment/shipments-list'
 import { ShipmentDetail } from '@/components/erp/shipment/shipment-detail'
@@ -34,6 +35,11 @@ function PageContent() {
 
   if (currentPage === 'dashboard') {
     return <DashboardPage />
+  }
+
+  // Summary Page
+  if (currentPage === 'summary') {
+    return <SummaryPage />
   }
 
   // Shipment Operations Module

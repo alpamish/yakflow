@@ -28,6 +28,7 @@ import {
   Moon,
   Sun,
   Globe,
+  ClipboardList,
 } from 'lucide-react'
 
 import {
@@ -160,6 +161,16 @@ export function ERPSidebar() {
                 >
                   <LayoutDashboard className="size-4" />
                   <span>Dashboard</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isActive('summary')}
+                  onClick={() => navigateTo('summary')}
+                  tooltip="Summary"
+                >
+                  <ClipboardList className="size-4" />
+                  <span>Summary</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
