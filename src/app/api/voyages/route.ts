@@ -38,8 +38,8 @@ export async function GET(request: NextRequest) {
         where,
         include: {
           teuRecords: { select: { loadedTEUs: true, totalTEUs: true, teuUtilization: true } },
-          revenues: { select: { amountBase: true } },
-          expenses: { select: { amountBase: true } },
+          revenues: { select: { amount: true } },
+          expenses: { select: { amount: true } },
         },
         orderBy,
         skip,
@@ -59,8 +59,8 @@ export async function GET(request: NextRequest) {
               teuUtilization: latestTeu.teuUtilization,
             }
           : null,
-        totalRevenue: v.revenues.reduce((sum, r) => sum + (r.amountBase || 0), 0),
-        totalExpenses: v.expenses.reduce((sum, e) => sum + (e.amountBase || 0), 0),
+        totalRevenue: v.revenues.reduce((sum, r) => sum + (r.amount || 0), 0),
+        totalExpenses: v.expenses.reduce((sum, e) => sum + (e.amount || 0), 0),
         teuRecords: undefined,
         revenues: undefined,
         expenses: undefined,

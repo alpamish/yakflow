@@ -19,6 +19,10 @@ import {
   Container,
   Thermometer,
   FileDown,
+  ChevronsUpDown,
+  Check,
+  Weight,
+  Hash,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -37,6 +41,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import { cn } from '@/lib/utils'
 import {
   Table,
   TableBody,
@@ -68,6 +86,7 @@ import {
 import { ChartContainer, type ChartConfig } from '@/components/ui/chart'
 import { useNavigationStore } from '@/lib/store'
 import { VoyageForm } from './voyage-form'
+import { ChargeTypeCombobox } from '@/components/erp/shipment/charge-type-combobox'
 
 const statusConfig: Record<string, { label: string; color: string; step: number }> = {
   planned: { label: 'Planned', color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300', step: 0 },
@@ -107,15 +126,6 @@ const EXPENSE_TYPES = [
 
 const PIE_COLORS = ['#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#6366f1', '#ec4899', '#14b8a6']
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount)
-}
-
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—'
   return new Date(dateStr).toLocaleDateString('en-US', {
@@ -154,13 +164,16 @@ interface VoyageDetail {
   revenues: Array<{
     id: string
     revenueType: string
+    customerId: string | null
+    customer: { id: string; name: string; code: string } | null
     currency: string
-    exchangeRate: number
     amount: number
-    amountBase: number | null
+    quantity: number
+    weight: number | null
     description: string | null
     invoiceNumber: string | null
     paymentStatus: string
+    dueDate: string | null
     revenueDate: string
   }>
   expenses: Array<{
@@ -169,9 +182,9 @@ interface VoyageDetail {
     vendorId: string | null
     vendor: { id: string; name: string } | null
     currency: string
-    exchangeRate: number
     amount: number
-    amountBase: number | null
+    quantity: number
+    weight: number | null
     description: string | null
     invoiceNumber: string | null
     paymentStatus: string
@@ -215,24 +228,31 @@ export function VoyageDetail() {
 
   // Revenue form
   const [showRevenueForm, setShowRevenueForm] = useState(false)
+  const [editingRevenue, setEditingRevenue] = useState<any>(null)
   const [revenueForm, setRevenueForm] = useState({
     revenueType: 'freight_income',
-    currency: 'USD',
-    exchangeRate: '1',
+    customerId: '',
+    currency: '',
     amount: '',
+    quantity: '1',
+    weight: '',
     description: '',
     invoiceNumber: '',
     paymentStatus: 'pending',
+    dueDate: '',
   })
+  const [customerPopoverOpen, setCustomerPopoverOpen] = useState(false)
 
   // Expense form
   const [showExpenseForm, setShowExpenseForm] = useState(false)
+  const [editingExpense, setEditingExpense] = useState<any>(null)
   const [expenseForm, setExpenseForm] = useState({
     expenseType: 'ocean_freight',
     vendorId: '',
-    currency: 'USD',
-    exchangeRate: '1',
+    currency: '',
     amount: '',
+    quantity: '1',
+    weight: '',
     description: '',
     invoiceNumber: '',
     paymentStatus: 'pending',
@@ -240,8 +260,23 @@ export function VoyageDetail() {
 
   // Vendors for expense form
   const [vendors, setVendors] = useState<Array<{ id: string; name: string }>>([])
+  const [customers, setCustomers] = useState<Array<{ id: string; name: string; code: string }>>([])
+  const [currencies, setCurrencies] = useState<Array<{ code: string; name: string; symbol: string }>>([])
+  const [baseCurrency, setBaseCurrency] = useState('USD')
   const [submitting, setSubmitting] = useState(false)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [deletingItem, setDeletingItem] = useState<{ type: string; id: string } | null>(null)
+  const [containerPrices, setContainerPrices] = useState<Record<string, string>>({})
+  const [containers, setContainers] = useState<Array<{ id: string; containerNumber: string; containerType: string; containerSize: string; quantity: number; status: string }>>([])
+
+  const formatCurrency = (amount: number): string => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: baseCurrency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount)
+  }
 
   const handleDownloadPdf = async () => {
     if (!selectedVoyageId) return
@@ -294,13 +329,34 @@ export function VoyageDetail() {
     }
   }, [])
 
+  const fetchCustomers = useCallback(async () => {
+    try {
+      const res = await fetch('/api/customers?limit=100')
+      const data = await res.json()
+      if (data.success) setCustomers(data.data || [])
+    } catch {
+      console.error('Failed to fetch customers')
+    }
+  }, [])
+
   useEffect(() => {
     fetchVoyage()
   }, [fetchVoyage])
 
   useEffect(() => {
     fetchVendors()
-  }, [fetchVendors])
+    fetchCustomers()
+    fetch('/api/currencies?isActive=true')
+      .then(r => r.json())
+      .then(json => { if (json.success) setCurrencies(json.data || []) })
+      .catch(() => {})
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(json => {
+        if (json.success && json.data?.baseCurrency) setBaseCurrency(json.data.baseCurrency)
+      })
+      .catch(() => {})
+  }, [fetchVendors, fetchCustomers])
 
   const handleAddTeu = async () => {
     if (!selectedVoyageId) return
@@ -338,19 +394,30 @@ export function VoyageDetail() {
     if (!selectedVoyageId) return
     setSubmitting(true)
     try {
-      const res = await fetch(`/api/voyages/${selectedVoyageId}/revenues`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...revenueForm,
-          exchangeRate: Number(revenueForm.exchangeRate) || 1,
-          amount: Number(revenueForm.amount) || 0,
-        }),
-      })
+      const body = {
+        ...revenueForm,
+        customerId: revenueForm.customerId || null,
+        amount: Number(revenueForm.amount) || 0,
+        quantity: Number(revenueForm.quantity) || 1,
+        weight: revenueForm.weight ? Number(revenueForm.weight) : null,
+        dueDate: revenueForm.dueDate || null,
+      }
+      const res = await fetch(
+        editingRevenue
+          ? `/api/voyages/${selectedVoyageId}/revenues/${editingRevenue.id}`
+          : `/api/voyages/${selectedVoyageId}/revenues`,
+        {
+          method: editingRevenue ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }
+      )
       const data = await res.json()
       if (data.success) {
         setShowRevenueForm(false)
-        setRevenueForm({ revenueType: 'freight_income', currency: 'USD', exchangeRate: '1', amount: '', description: '', invoiceNumber: '', paymentStatus: 'pending' })
+        setEditingRevenue(null)
+        setContainerPrices({})
+        setRevenueForm({ revenueType: 'freight_income', customerId: '', currency: baseCurrency, amount: '', quantity: '1', weight: '', description: '', invoiceNumber: '', paymentStatus: 'pending', dueDate: '' })
         fetchVoyage()
       }
     } catch {
@@ -364,20 +431,28 @@ export function VoyageDetail() {
     if (!selectedVoyageId) return
     setSubmitting(true)
     try {
-      const res = await fetch(`/api/voyages/${selectedVoyageId}/expenses`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...expenseForm,
-          vendorId: expenseForm.vendorId || null,
-          exchangeRate: Number(expenseForm.exchangeRate) || 1,
-          amount: Number(expenseForm.amount) || 0,
-        }),
-      })
+      const body = {
+        ...expenseForm,
+        vendorId: expenseForm.vendorId || null,
+        amount: Number(expenseForm.amount) || 0,
+        quantity: Number(expenseForm.quantity) || 1,
+        weight: expenseForm.weight ? Number(expenseForm.weight) : null,
+      }
+      const res = await fetch(
+        editingExpense
+          ? `/api/voyages/${selectedVoyageId}/expenses/${editingExpense.id}`
+          : `/api/voyages/${selectedVoyageId}/expenses`,
+        {
+          method: editingExpense ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }
+      )
       const data = await res.json()
       if (data.success) {
         setShowExpenseForm(false)
-        setExpenseForm({ expenseType: 'ocean_freight', vendorId: '', currency: 'USD', exchangeRate: '1', amount: '', description: '', invoiceNumber: '', paymentStatus: 'pending' })
+        setEditingExpense(null)
+        setExpenseForm({ expenseType: 'ocean_freight', vendorId: '', currency: baseCurrency, amount: '', quantity: '1', weight: '', description: '', invoiceNumber: '', paymentStatus: 'pending' })
         fetchVoyage()
       }
     } catch {
@@ -394,6 +469,84 @@ export function VoyageDetail() {
       goBack()
     } catch {
       console.error('Failed to delete voyage')
+    }
+  }
+
+  const fetchContainers = useCallback(async () => {
+    if (!voyage?.voyageNumber) return
+    try {
+      const res = await fetch(`/api/shipments?voyageNumber=${encodeURIComponent(voyage.voyageNumber)}`)
+      const json = await res.json()
+      if (json.success && json.data?.length > 0) {
+        const allContainers = json.data.flatMap((s: any) => s.containers || [])
+        setContainers(allContainers)
+      }
+    } catch {
+      console.error('Failed to fetch containers')
+    }
+  }, [voyage?.voyageNumber])
+
+  useEffect(() => {
+    if (voyage?.voyageNumber) fetchContainers()
+  }, [voyage?.voyageNumber, fetchContainers])
+
+  const handleDeleteRevenue = async (revenueId: string) => {
+    if (!selectedVoyageId) return
+    try {
+      const res = await fetch(`/api/voyages/${selectedVoyageId}/revenues/${revenueId}`, { method: 'DELETE' })
+      const json = await res.json()
+      if (json.success) {
+        setDeletingItem(null)
+        fetchVoyage()
+      }
+    } catch {
+      console.error('Failed to delete revenue')
+    }
+  }
+
+  const handleDeleteExpense = async (expenseId: string) => {
+    if (!selectedVoyageId) return
+    try {
+      const res = await fetch(`/api/voyages/${selectedVoyageId}/expenses/${expenseId}`, { method: 'DELETE' })
+      const json = await res.json()
+      if (json.success) {
+        setDeletingItem(null)
+        fetchVoyage()
+      }
+    } catch {
+      console.error('Failed to delete expense')
+    }
+  }
+
+  const toggleRevenuePaymentStatus = async (revenue: any) => {
+    if (!selectedVoyageId) return
+    const cycle: Record<string, string> = { pending: 'partial', partial: 'paid', paid: 'overdue', overdue: 'pending' }
+    const nextStatus = cycle[revenue.paymentStatus] || 'pending'
+    try {
+      await fetch(`/api/voyages/${selectedVoyageId}/revenues/${revenue.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentStatus: nextStatus }),
+      })
+      fetchVoyage()
+    } catch {
+      console.error('Failed to toggle payment status')
+    }
+  }
+
+  const toggleExpensePaymentStatus = async (expense: any) => {
+    if (!selectedVoyageId) return
+    const cycle: Record<string, string> = { pending: 'partial', partial: 'paid', paid: 'pending' }
+    const nextStatus = cycle[expense.paymentStatus] || 'pending'
+    try {
+      await fetch(`/api/voyages/${selectedVoyageId}/expenses/${expense.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentStatus: nextStatus }),
+      })
+      fetchVoyage()
+    } catch {
+      console.error('Failed to toggle payment status')
     }
   }
 
@@ -428,8 +581,8 @@ export function VoyageDetail() {
   const status = statusConfig[voyage.status] || statusConfig.planned
   const currentStep = status.step >= 0 ? status.step : 0
   const latestTeu = voyage.teuRecords.length > 0 ? voyage.teuRecords[0] : null
-  const totalRevenue = voyage.revenues.reduce((s, r) => s + (r.amountBase || 0), 0)
-  const totalExpenses = voyage.expenses.reduce((s, e) => s + (e.amountBase || 0), 0)
+  const totalRevenue = voyage.revenues.reduce((s, r) => s + (r.amount || 0), 0)
+  const totalExpenses = voyage.expenses.reduce((s, e) => s + (e.amount || 0), 0)
 
   const revenueByTypeData = Object.entries(profit?.revenueByType || {}).map(([key, value]) => ({
     name: REVENUE_TYPES.find(t => t.value === key)?.label || key,
@@ -821,11 +974,10 @@ export function VoyageDetail() {
             const revenuesByType: Record<string, { total: number; byCurrency: Record<string, number> }> = {}
             voyage.revenues.forEach((rev) => {
               const type = rev.revenueType
-              const amountBase = rev.amountBase || 0
               if (!revenuesByType[type]) {
                 revenuesByType[type] = { total: 0, byCurrency: {} }
               }
-              revenuesByType[type].total += amountBase
+              revenuesByType[type].total += rev.amount || 0
               if (!revenuesByType[type].byCurrency[rev.currency]) {
                 revenuesByType[type].byCurrency[rev.currency] = 0
               }
@@ -868,7 +1020,7 @@ export function VoyageDetail() {
                       <TableHeader>
                         <TableRow className="bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-50 dark:hover:bg-emerald-950/30">
                           <TableHead className="font-bold text-emerald-900 dark:text-emerald-100 pl-6 min-w-[200px]">TYPE</TableHead>
-                          <TableHead className="font-bold text-emerald-900 dark:text-emerald-100 text-right min-w-[140px]">REVENUE (BASE)</TableHead>
+                          <TableHead className="font-bold text-emerald-900 dark:text-emerald-100 text-right min-w-[140px]">REVENUE</TableHead>
                           {allCurrencies.map(c => (
                             <TableHead key={c} className="font-bold text-emerald-900 dark:text-emerald-100 text-right min-w-[130px]">
                               {c} AMOUNT
@@ -952,7 +1104,7 @@ export function VoyageDetail() {
                         <span className="font-semibold">{allCurrencies.join(', ')}</span>
                       </div>
                       <div>
-                        <span className="text-muted-foreground">Total Base Revenue: </span>
+                        <span className="text-muted-foreground">Total Revenue: </span>
                         <span className="font-bold text-emerald-600">{formatCurrency(grandTotal)}</span>
                       </div>
                     </div>
@@ -968,7 +1120,12 @@ export function VoyageDetail() {
                 <CardTitle className="text-lg">Revenue Records</CardTitle>
                 <CardDescription>Track income from voyage operations</CardDescription>
               </div>
-              <Button onClick={() => setShowRevenueForm(true)} size="sm" className="bg-amber-600 hover:bg-amber-700 text-white">
+              <Button onClick={() => {
+                setEditingRevenue(null)
+                setContainerPrices({})
+                setRevenueForm({ revenueType: 'freight_income', customerId: '', currency: baseCurrency, amount: '', quantity: '1', weight: '', description: '', invoiceNumber: '', paymentStatus: 'pending', dueDate: '' })
+                setShowRevenueForm(true)
+              }} size="sm" className="bg-amber-600 hover:bg-amber-700 text-white">
                 <Plus className="size-4 mr-2" />
                 Add Revenue
               </Button>
@@ -985,37 +1142,82 @@ export function VoyageDetail() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Currency</TableHead>
-                          <TableHead className="text-right">Amount</TableHead>
-                          <TableHead className="text-right">Amount (Base)</TableHead>
-                          <TableHead>Invoice #</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Description</TableHead>
+                          <TableHead className="tracking-wider text-[11px]">TYPE</TableHead>
+                          <TableHead className="tracking-wider text-[11px]">CUSTOMER</TableHead>
+                          <TableHead className="tracking-wider text-[11px]">CURRENCY</TableHead>
+                          <TableHead className="text-right tracking-wider text-[11px]">AMOUNT</TableHead>
+                          <TableHead className="text-right tracking-wider text-[11px]">QTY</TableHead>
+                          <TableHead className="text-right tracking-wider text-[11px]">WEIGHT</TableHead>
+                          <TableHead className="tracking-wider text-[11px]">INVOICE</TableHead>
+                          <TableHead className="tracking-wider text-[11px]">DUE DATE</TableHead>
+                          <TableHead className="tracking-wider text-[11px]">STATUS</TableHead>
+                          <TableHead className="w-[70px]"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {voyage.revenues.map((rev) => (
                           <TableRow key={rev.id}>
                             <TableCell>
-                              <Badge variant="outline" className="text-xs">
+                              <span className="text-xs font-medium uppercase tracking-wide">
                                 {REVENUE_TYPES.find(t => t.value === rev.revenueType)?.label || rev.revenueType}
-                              </Badge>
+                              </span>
                             </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{rev.customer?.name || '—'}</TableCell>
                             <TableCell className="font-mono text-sm">{rev.currency}</TableCell>
-                            <TableCell className="text-right font-mono">{rev.amount.toLocaleString()}</TableCell>
-                            <TableCell className="text-right font-mono font-semibold">{(rev.amountBase || 0).toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono font-semibold">{rev.amount.toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono">{rev.quantity}</TableCell>
+                            <TableCell className="text-right font-mono text-muted-foreground">{rev.weight ? `${rev.weight} kg` : '—'}</TableCell>
                             <TableCell className="text-sm text-muted-foreground">{rev.invoiceNumber || '—'}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{formatDate(rev.dueDate)}</TableCell>
                             <TableCell>
-                              <Badge variant="secondary" className={
-                                rev.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                                rev.paymentStatus === 'partial' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                                'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                              }>
+                              <Badge
+                                variant="secondary"
+                                className={`cursor-pointer text-xs ${
+                                  rev.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                  rev.paymentStatus === 'partial' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                                  rev.paymentStatus === 'overdue' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                                  'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                                }`}
+                                onClick={() => toggleRevenuePaymentStatus(rev)}
+                              >
                                 {rev.paymentStatus}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-sm text-muted-foreground max-w-[150px] truncate">{rev.description || '—'}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7"
+                                  onClick={() => {
+                                    setEditingRevenue(rev)
+                                    setRevenueForm({
+                                      revenueType: rev.revenueType,
+                                      customerId: rev.customerId || '',
+                                      currency: rev.currency,
+                                      amount: rev.amount.toString(),
+                                      quantity: rev.quantity.toString(),
+                                      weight: rev.weight?.toString() || '',
+                                      description: rev.description || '',
+                                      invoiceNumber: rev.invoiceNumber || '',
+                                      paymentStatus: rev.paymentStatus,
+                                      dueDate: rev.dueDate?.split('T')[0] || '',
+                                    })
+                                    setShowRevenueForm(true)
+                                  }}
+                                >
+                                  <Pencil className="size-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7 text-red-500 hover:text-red-600"
+                                  onClick={() => setDeletingItem({ type: 'revenue', id: rev.id })}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </div>
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -1024,7 +1226,7 @@ export function VoyageDetail() {
                   <Separator className="my-4" />
                   <div className="flex justify-end">
                     <div className="text-right">
-                      <p className="text-sm text-muted-foreground">Total Revenue (Base)</p>
+                      <p className="text-sm text-muted-foreground">Total Revenue</p>
                       <p className="text-2xl font-bold text-emerald-600">{formatCurrency(totalRevenue)}</p>
                     </div>
                   </div>
@@ -1042,11 +1244,10 @@ export function VoyageDetail() {
             const expensesByType: Record<string, { total: number; byCurrency: Record<string, number> }> = {}
             voyage.expenses.forEach((exp) => {
               const type = exp.expenseType
-              const amountBase = exp.amountBase || 0
               if (!expensesByType[type]) {
                 expensesByType[type] = { total: 0, byCurrency: {} }
               }
-              expensesByType[type].total += amountBase
+              expensesByType[type].total += exp.amount || 0
               if (!expensesByType[type].byCurrency[exp.currency]) {
                 expensesByType[type].byCurrency[exp.currency] = 0
               }
@@ -1095,7 +1296,7 @@ export function VoyageDetail() {
                       <TableHeader>
                         <TableRow className="bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-50 dark:hover:bg-amber-950/30">
                           <TableHead className="font-bold text-amber-900 dark:text-amber-100 pl-6 min-w-[200px]">TYPE</TableHead>
-                          <TableHead className="font-bold text-amber-900 dark:text-amber-100 text-right min-w-[140px]">COSTS (BASE)</TableHead>
+                          <TableHead className="font-bold text-amber-900 dark:text-amber-100 text-right min-w-[140px]">COSTS</TableHead>
                           {allCurrencies.map(c => (
                             <TableHead key={c} className="font-bold text-amber-900 dark:text-amber-100 text-right min-w-[130px]">
                               {c} AMOUNT
@@ -1186,7 +1387,7 @@ export function VoyageDetail() {
                         <span className="font-semibold">{allCurrencies.join(', ')}</span>
                       </div>
                       <div>
-                        <span className="text-muted-foreground">Total Base Cost: </span>
+                        <span className="text-muted-foreground">Total Cost: </span>
                         <span className="font-bold text-red-600">{formatCurrency(grandTotal)}</span>
                       </div>
                     </div>
@@ -1249,7 +1450,11 @@ export function VoyageDetail() {
                 <CardTitle className="text-lg">Expense Records</CardTitle>
                 <CardDescription>Track costs for voyage operations</CardDescription>
               </div>
-              <Button onClick={() => setShowExpenseForm(true)} size="sm" className="bg-amber-600 hover:bg-amber-700 text-white">
+              <Button onClick={() => {
+                setEditingExpense(null)
+                setExpenseForm({ expenseType: 'ocean_freight', vendorId: '', currency: baseCurrency, amount: '', quantity: '1', weight: '', description: '', invoiceNumber: '', paymentStatus: 'pending' })
+                setShowExpenseForm(true)
+              }} size="sm" className="bg-amber-600 hover:bg-amber-700 text-white">
                 <Plus className="size-4 mr-2" />
                 Add Expense
               </Button>
@@ -1266,39 +1471,78 @@ export function VoyageDetail() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Vendor</TableHead>
-                          <TableHead>Currency</TableHead>
-                          <TableHead className="text-right">Amount</TableHead>
-                          <TableHead className="text-right">Amount (Base)</TableHead>
-                          <TableHead>Invoice #</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Description</TableHead>
+                          <TableHead className="tracking-wider text-[11px]">TYPE</TableHead>
+                          <TableHead className="tracking-wider text-[11px]">VENDOR</TableHead>
+                          <TableHead className="tracking-wider text-[11px]">CURRENCY</TableHead>
+                          <TableHead className="text-right tracking-wider text-[11px]">AMOUNT</TableHead>
+                          <TableHead className="text-right tracking-wider text-[11px]">QTY</TableHead>
+                          <TableHead className="text-right tracking-wider text-[11px]">WEIGHT</TableHead>
+                          <TableHead className="tracking-wider text-[11px]">INVOICE</TableHead>
+                          <TableHead className="tracking-wider text-[11px]">STATUS</TableHead>
+                          <TableHead className="w-[70px]"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {voyage.expenses.map((exp) => (
                           <TableRow key={exp.id}>
                             <TableCell>
-                              <Badge variant="outline" className="text-xs">
+                              <span className="text-xs font-medium uppercase tracking-wide">
                                 {EXPENSE_TYPES.find(t => t.value === exp.expenseType)?.label || exp.expenseType}
-                              </Badge>
+                              </span>
                             </TableCell>
-                            <TableCell className="text-sm">{exp.vendor?.name || '—'}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{exp.vendor?.name || '—'}</TableCell>
                             <TableCell className="font-mono text-sm">{exp.currency}</TableCell>
-                            <TableCell className="text-right font-mono">{exp.amount.toLocaleString()}</TableCell>
-                            <TableCell className="text-right font-mono font-semibold">{(exp.amountBase || 0).toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono font-semibold">{exp.amount.toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono">{exp.quantity}</TableCell>
+                            <TableCell className="text-right font-mono text-muted-foreground">{exp.weight ? `${exp.weight} kg` : '—'}</TableCell>
                             <TableCell className="text-sm text-muted-foreground">{exp.invoiceNumber || '—'}</TableCell>
                             <TableCell>
-                              <Badge variant="secondary" className={
-                                exp.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                                exp.paymentStatus === 'partial' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                                'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                              }>
+                              <Badge
+                                variant="secondary"
+                                className={`cursor-pointer text-xs ${
+                                  exp.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                  exp.paymentStatus === 'partial' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                                  'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                                }`}
+                                onClick={() => toggleExpensePaymentStatus(exp)}
+                              >
                                 {exp.paymentStatus}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-sm text-muted-foreground max-w-[150px] truncate">{exp.description || '—'}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7"
+                                  onClick={() => {
+                                    setEditingExpense(exp)
+                                    setExpenseForm({
+                                      expenseType: exp.expenseType,
+                                      vendorId: exp.vendorId || '',
+                                      currency: exp.currency,
+                                      amount: exp.amount.toString(),
+                                      quantity: exp.quantity.toString(),
+                                      weight: exp.weight?.toString() || '',
+                                      description: exp.description || '',
+                                      invoiceNumber: exp.invoiceNumber || '',
+                                      paymentStatus: exp.paymentStatus,
+                                    })
+                                    setShowExpenseForm(true)
+                                  }}
+                                >
+                                  <Pencil className="size-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7 text-red-500 hover:text-red-600"
+                                  onClick={() => setDeletingItem({ type: 'expense', id: exp.id })}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </div>
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -1307,7 +1551,7 @@ export function VoyageDetail() {
                   <Separator className="my-4" />
                   <div className="flex justify-end">
                     <div className="text-right">
-                      <p className="text-sm text-muted-foreground">Total Expenses (Base)</p>
+                      <p className="text-sm text-muted-foreground">Total Expenses</p>
                       <p className="text-2xl font-bold text-red-600">{formatCurrency(totalExpenses)}</p>
                     </div>
                   </div>
@@ -1543,15 +1787,72 @@ export function VoyageDetail() {
       </Dialog>
 
       {/* Revenue Form Dialog */}
-      <Dialog open={showRevenueForm} onOpenChange={setShowRevenueForm}>
-        <DialogContent className="max-w-lg">
+      <Dialog open={showRevenueForm} onOpenChange={(open) => { if (!open) { setShowRevenueForm(false); setEditingRevenue(null) } }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add Revenue</DialogTitle>
+            <DialogTitle>{editingRevenue ? 'Edit Revenue' : 'Add Revenue'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            {/* Container Pricing */}
+            {!editingRevenue && containers.length > 0 && (
+              <div className="border rounded-lg p-4 space-y-3">
+                <h4 className="text-sm font-semibold tracking-wider uppercase">Container Pricing</h4>
+                {Object.entries(
+                  containers.reduce((acc, c) => {
+                    const key = `${c.containerType}|${c.status}`
+                    acc[key] = (acc[key] || 0) + (c.quantity || 1)
+                    return acc
+                  }, {} as Record<string, number>)
+                ).map(([key, qty]) => {
+                  const [type, status] = key.split('|')
+                  const price = parseFloat(containerPrices[key] || '0') || 0
+                  const subtotal = qty * price
+                  return (
+                    <div key={key} className="grid grid-cols-[1fr_auto_auto_1fr_auto] gap-2 items-center">
+                      <span className="text-sm font-medium">{type}</span>
+                      <Badge variant="secondary" className="text-xs">{status}</Badge>
+                      <span className="text-sm text-muted-foreground">×{qty}</span>
+                      <Input
+                        type="number"
+                        placeholder="Price"
+                        value={containerPrices[key] || ''}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          const newPrices = { ...containerPrices, [key]: v }
+                          setContainerPrices(newPrices)
+                          const groups = containers.reduce((acc, c) => {
+                            const k = `${c.containerType}|${c.status}`
+                            acc[k] = (acc[k] || 0) + (c.quantity || 1)
+                            return acc
+                          }, {} as Record<string, number>)
+                          const total = Object.entries(newPrices).reduce((sum, [k, p]) => {
+                            return sum + (groups[k] || 0) * (parseFloat(p || '0') || 0)
+                          }, 0)
+                          setRevenueForm((prev) => ({ ...prev, amount: total ? total.toString() : '' }))
+                        }}
+                      />
+                      <span className="text-sm text-right font-medium tabular-nums">
+                        {formatCurrency(subtotal)}
+                      </span>
+                    </div>
+                  )
+                })}
+                <div className="flex justify-end pt-2 border-t">
+                  <span className="text-sm font-semibold tabular-nums">
+                    Total: {formatCurrency(
+                      Object.entries(containerPrices).reduce((sum, [key, price]) => {
+                        const qty = containers.reduce((s, c) => s + (`${c.containerType}|${c.status}` === key ? (c.quantity || 1) : 0), 0)
+                        return sum + qty * (parseFloat(price || '0') || 0)
+                      }, 0)
+                    )}
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Revenue Type</Label>
+                <Label className="text-xs uppercase tracking-wider">Revenue Type</Label>
                 <Select value={revenueForm.revenueType} onValueChange={(v) => setRevenueForm(p => ({ ...p, revenueType: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -1560,27 +1861,91 @@ export function VoyageDetail() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Currency</Label>
-                <Input value={revenueForm.currency} onChange={(e) => setRevenueForm(p => ({ ...p, currency: e.target.value }))} />
+                <Label className="text-xs uppercase tracking-wider">Customer</Label>
+                <Popover open={customerPopoverOpen} onOpenChange={setCustomerPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={customerPopoverOpen}
+                      className="w-full justify-between font-normal"
+                    >
+                      {revenueForm.customerId
+                        ? customers.find((c) => c.id === revenueForm.customerId)?.name || 'Select customer'
+                        : 'Select customer'}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[var(--radix-popover-trigger-width)] max-h-[300px] overflow-y-auto p-0">
+                    <Command>
+                      <CommandInput placeholder="Search customers..." />
+                      <CommandList className="max-h-[260px]">
+                        <CommandEmpty>No customers found.</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value="_none"
+                            onSelect={() => {
+                              setRevenueForm({ ...revenueForm, customerId: '' })
+                              setCustomerPopoverOpen(false)
+                            }}
+                          >
+                            <Check className={cn('mr-2 h-4 w-4', !revenueForm.customerId ? 'opacity-100' : 'opacity-0')} />
+                            No Customer
+                          </CommandItem>
+                          {customers.map((c) => (
+                            <CommandItem
+                              key={c.id}
+                              value={`${c.name} ${c.code}`}
+                              onSelect={() => {
+                                setRevenueForm({ ...revenueForm, customerId: c.id })
+                                setCustomerPopoverOpen(false)
+                              }}
+                            >
+                              <Check className={cn('mr-2 h-4 w-4', revenueForm.customerId === c.id ? 'opacity-100' : 'opacity-0')} />
+                              {c.name} ({c.code})
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <div className="space-y-1.5">
-                <Label>Exchange Rate</Label>
-                <Input type="number" step="0.01" value={revenueForm.exchangeRate} onChange={(e) => setRevenueForm(p => ({ ...p, exchangeRate: e.target.value }))} />
+                <Label className="text-xs uppercase tracking-wider">Currency</Label>
+                <Select value={revenueForm.currency || baseCurrency} onValueChange={(v) => setRevenueForm(p => ({ ...p, currency: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {currencies.map(c => <SelectItem key={c.code} value={c.code}>{c.code}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Amount *</Label>
+                <Label className="text-xs uppercase tracking-wider">Amount *</Label>
                 <Input type="number" step="0.01" value={revenueForm.amount} onChange={(e) => setRevenueForm(p => ({ ...p, amount: e.target.value }))} required />
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Invoice Number</Label>
+                <Label className="text-xs uppercase tracking-wider">Quantity</Label>
+                <Input type="number" min="1" value={revenueForm.quantity} onChange={(e) => setRevenueForm(p => ({ ...p, quantity: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase tracking-wider">Weight (kg)</Label>
+                <Input type="number" step="0.1" value={revenueForm.weight} onChange={(e) => setRevenueForm(p => ({ ...p, weight: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase tracking-wider">Invoice Number</Label>
                 <Input value={revenueForm.invoiceNumber} onChange={(e) => setRevenueForm(p => ({ ...p, invoiceNumber: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
-                <Label>Payment Status</Label>
+                <Label className="text-xs uppercase tracking-wider">Due Date</Label>
+                <Input type="date" value={revenueForm.dueDate} onChange={(e) => setRevenueForm(p => ({ ...p, dueDate: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase tracking-wider">Payment Status</Label>
                 <Select value={revenueForm.paymentStatus} onValueChange={(v) => setRevenueForm(p => ({ ...p, paymentStatus: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -1592,39 +1957,38 @@ export function VoyageDetail() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Description</Label>
+              <Label className="text-xs uppercase tracking-wider">Description</Label>
               <Textarea value={revenueForm.description} onChange={(e) => setRevenueForm(p => ({ ...p, description: e.target.value }))} rows={2} />
             </div>
           </div>
           <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setShowRevenueForm(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setShowRevenueForm(false); setEditingRevenue(null); setContainerPrices({}) }}>Cancel</Button>
             <Button onClick={handleAddRevenue} disabled={submitting || !revenueForm.amount} className="bg-amber-600 hover:bg-amber-700 text-white">
               {submitting && <Loader2 className="size-4 mr-2 animate-spin" />}
-              Add Revenue
+              {editingRevenue ? 'Update Revenue' : 'Add Revenue'}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Expense Form Dialog */}
-      <Dialog open={showExpenseForm} onOpenChange={setShowExpenseForm}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <Dialog open={showExpenseForm} onOpenChange={(open) => { if (!open) { setShowExpenseForm(false); setEditingExpense(null) } }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add Expense</DialogTitle>
+            <DialogTitle>{editingExpense ? 'Edit Expense' : 'Add Expense'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Expense Type</Label>
-                <Select value={expenseForm.expenseType} onValueChange={(v) => setExpenseForm(p => ({ ...p, expenseType: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {EXPENSE_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Label className="text-xs uppercase tracking-wider">Expense Type</Label>
+                <ChargeTypeCombobox
+                  type="expense"
+                  value={expenseForm.expenseType}
+                  onValueChange={(v) => setExpenseForm(p => ({ ...p, expenseType: v }))}
+                />
               </div>
               <div className="space-y-1.5">
-                <Label>Vendor</Label>
+                <Label className="text-xs uppercase tracking-wider">Vendor</Label>
                 <Select value={expenseForm.vendorId} onValueChange={(v) => setExpenseForm(p => ({ ...p, vendorId: v }))}>
                   <SelectTrigger><SelectValue placeholder="Select vendor" /></SelectTrigger>
                   <SelectContent>
@@ -1634,27 +1998,36 @@ export function VoyageDetail() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <div className="space-y-1.5">
-                <Label>Currency</Label>
-                <Input value={expenseForm.currency} onChange={(e) => setExpenseForm(p => ({ ...p, currency: e.target.value }))} />
+                <Label className="text-xs uppercase tracking-wider">Currency</Label>
+                <Select value={expenseForm.currency || baseCurrency} onValueChange={(v) => setExpenseForm(p => ({ ...p, currency: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {currencies.map(c => <SelectItem key={c.code} value={c.code}>{c.code}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Exchange Rate</Label>
-                <Input type="number" step="0.01" value={expenseForm.exchangeRate} onChange={(e) => setExpenseForm(p => ({ ...p, exchangeRate: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Amount *</Label>
+                <Label className="text-xs uppercase tracking-wider">Amount *</Label>
                 <Input type="number" step="0.01" value={expenseForm.amount} onChange={(e) => setExpenseForm(p => ({ ...p, amount: e.target.value }))} required />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase tracking-wider">Quantity</Label>
+                <Input type="number" min="1" value={expenseForm.quantity} onChange={(e) => setExpenseForm(p => ({ ...p, quantity: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase tracking-wider">Weight (kg)</Label>
+                <Input type="number" step="0.1" value={expenseForm.weight} onChange={(e) => setExpenseForm(p => ({ ...p, weight: e.target.value }))} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Invoice Number</Label>
+                <Label className="text-xs uppercase tracking-wider">Invoice Number</Label>
                 <Input value={expenseForm.invoiceNumber} onChange={(e) => setExpenseForm(p => ({ ...p, invoiceNumber: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
-                <Label>Payment Status</Label>
+                <Label className="text-xs uppercase tracking-wider">Payment Status</Label>
                 <Select value={expenseForm.paymentStatus} onValueChange={(v) => setExpenseForm(p => ({ ...p, paymentStatus: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -1666,15 +2039,37 @@ export function VoyageDetail() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Description</Label>
+              <Label className="text-xs uppercase tracking-wider">Description</Label>
               <Textarea value={expenseForm.description} onChange={(e) => setExpenseForm(p => ({ ...p, description: e.target.value }))} rows={2} />
             </div>
           </div>
           <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setShowExpenseForm(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setShowExpenseForm(false); setEditingExpense(null) }}>Cancel</Button>
             <Button onClick={handleAddExpense} disabled={submitting || !expenseForm.amount} className="bg-amber-600 hover:bg-amber-700 text-white">
               {submitting && <Loader2 className="size-4 mr-2 animate-spin" />}
-              Add Expense
+              {editingExpense ? 'Update Expense' : 'Add Expense'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deletingItem} onOpenChange={() => setDeletingItem(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Confirm Delete</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Are you sure you want to delete this {deletingItem?.type}? This action cannot be undone.</p>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setDeletingItem(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (deletingItem?.type === 'revenue') handleDeleteRevenue(deletingItem.id)
+                else if (deletingItem?.type === 'expense') handleDeleteExpense(deletingItem.id)
+              }}
+            >
+              Delete
             </Button>
           </div>
         </DialogContent>

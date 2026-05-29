@@ -243,15 +243,13 @@ async function main() {
 
   // Voyage Expenses
   for (const ve of data.voyage.voyageExpenses) {
-    const rate = rateMap[ve.currency] || 1.0
     await prisma.voyageExpense.create({
       data: {
         voyageId: voyage.id,
         expenseType: ve.expenseType,
         currency: ve.currency,
-        exchangeRate: rate,
         amount: ve.amount,
-        amountBase: Math.round(ve.amount * rate * 100) / 100,
+        quantity: 1,
         description: ve.description,
         paymentStatus: ve.paymentStatus,
       },
@@ -260,15 +258,13 @@ async function main() {
 
   // Voyage Revenues
   for (const vr of data.voyage.voyageRevenues) {
-    const rate = rateMap[vr.currency] || 1.0
     await prisma.voyageRevenue.create({
       data: {
         voyageId: voyage.id,
         revenueType: vr.revenueType,
         currency: vr.currency,
-        exchangeRate: rate,
         amount: vr.amount,
-        amountBase: Math.round(vr.amount * rate * 100) / 100,
+        quantity: 1,
         description: vr.description,
         paymentStatus: vr.paymentStatus,
       },

@@ -114,8 +114,9 @@ model Customer {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  shipments   Shipment[]
-  revenues    ShipmentRevenue[]
+  shipments       Shipment[]
+  revenues        ShipmentRevenue[]
+  voyageRevenues  VoyageRevenue[]
 }
 
 model Vendor {
@@ -279,20 +280,23 @@ model VoyageTEU {
 }
 
 model VoyageRevenue {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   voyageId      String
-  voyage        Voyage   @relation(fields: [voyageId], references: [id], onDelete: Cascade)
-  revenueType   String   // freight_income, slot_revenue, surcharges, handling_income, service_charges
-  currency      String   @default("USD")
-  exchangeRate  Float    @default(1)
+  voyage        Voyage    @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+  revenueType   String    // freight_income, slot_revenue, surcharges, handling_income, service_charges
+  customerId    String?
+  customer      Customer? @relation(fields: [customerId], references: [id])
+  currency      String    @default("USD")
   amount        Float
-  amountBase    Float?
+  quantity      Int       @default(1)
+  weight        Float?
   description   String?
   invoiceNumber String?
-  paymentStatus String   @default("pending") // pending, partial, paid
-  revenueDate   DateTime @default(now())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  paymentStatus String    @default("pending") // pending, partial, paid, overdue
+  dueDate       DateTime?
+  revenueDate   DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model VoyageExpense {
@@ -303,9 +307,9 @@ model VoyageExpense {
   vendorId      String?
   vendor        Vendor?  @relation(fields: [vendorId], references: [id])
   currency      String   @default("USD")
-  exchangeRate  Float    @default(1)
   amount        Float
-  amountBase    Float?
+  quantity      Int      @default(1)
+  weight        Float?
   description   String?
   invoiceNumber String?
   paymentStatus String   @default("pending") // pending, partial, paid

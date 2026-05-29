@@ -67,8 +67,8 @@ export async function GET() {
         distinct: ['voyageId'],
         orderBy: { recordedAt: 'desc' },
       }),
-      db.voyageRevenue.aggregate({ _sum: { amountBase: true } }),
-      db.voyageExpense.aggregate({ _sum: { amountBase: true } }),
+      db.voyageRevenue.aggregate({ _sum: { amount: true } }),
+      db.voyageExpense.aggregate({ _sum: { amount: true } }),
     ])
 
     const voyageStatusBreakdown: Record<string, number> = {}
@@ -81,8 +81,8 @@ export async function GET() {
     const avgUtilization =
       totalTEUs > 0 ? Math.round((totalLoadedTEUs / totalTEUs) * 10000) / 100 : 0
 
-    const totalVoyageRevenue = Math.round(voyageRevenueAgg._sum.amountBase ?? 0)
-    const totalVoyageExpense = Math.round(voyageExpenseAgg._sum.amountBase ?? 0)
+    const totalVoyageRevenue = Math.round(voyageRevenueAgg._sum.amount ?? 0)
+    const totalVoyageExpense = Math.round(voyageExpenseAgg._sum.amount ?? 0)
 
     // ============================================================
     // 4. Customer Summary
@@ -267,7 +267,7 @@ export async function GET() {
       }),
       db.voyageExpense.groupBy({
         by: ['expenseType'],
-        _sum: { amountBase: true },
+        _sum: { amount: true },
       }),
     ])
 
@@ -281,7 +281,7 @@ export async function GET() {
 
     for (const row of voyageExpenseByType) {
       expenseBreakdownMap[row.expenseType] =
-        (expenseBreakdownMap[row.expenseType] ?? 0) + Math.round(row._sum.amountBase ?? 0)
+        (expenseBreakdownMap[row.expenseType] ?? 0) + Math.round(row._sum.amount ?? 0)
     }
 
     const expenseBreakdown = Object.entries(expenseBreakdownMap)
@@ -298,7 +298,7 @@ export async function GET() {
       }),
       db.voyageRevenue.groupBy({
         by: ['revenueType'],
-        _sum: { amountBase: true },
+        _sum: { amount: true },
       }),
     ])
 
@@ -311,7 +311,7 @@ export async function GET() {
 
     for (const row of voyageRevenueByType) {
       revenueBreakdownMap[row.revenueType] =
-        (revenueBreakdownMap[row.revenueType] ?? 0) + Math.round(row._sum.amountBase ?? 0)
+        (revenueBreakdownMap[row.revenueType] ?? 0) + Math.round(row._sum.amount ?? 0)
     }
 
     const revenueBreakdown = Object.entries(revenueBreakdownMap)

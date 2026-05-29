@@ -62,8 +62,8 @@ export async function GET(request: NextRequest) {
         include: {
           customer: { select: { id: true, name: true, code: true } },
           containers: { select: { id: true } },
-          expenses: { select: { amountBase: true } },
-          revenues: { select: { amountBase: true } },
+          expenses: { select: { amount: true } },
+          revenues: { select: { amount: true } },
         },
         orderBy,
         skip,
@@ -75,8 +75,8 @@ export async function GET(request: NextRequest) {
     const data = shipments.map((s) => ({
       ...s,
       containerCount: s.containers.length,
-      totalExpenses: s.expenses.reduce((sum, e) => sum + (e.amountBase || 0), 0),
-      totalRevenues: s.revenues.reduce((sum, r) => sum + (r.amountBase || 0), 0),
+      totalExpenses: s.expenses.reduce((sum, e) => sum + (e.amount || 0), 0),
+      totalRevenues: s.revenues.reduce((sum, r) => sum + (r.amount || 0), 0),
       containers: undefined,
       expenses: undefined,
       revenues: undefined,

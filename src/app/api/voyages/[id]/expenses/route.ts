@@ -57,9 +57,7 @@ export async function POST(
       )
     }
 
-    const exchangeRate = body.exchangeRate || 1
     const amount = body.amount
-    const amountBase = amount * exchangeRate
 
     const expense = await db.voyageExpense.create({
       data: {
@@ -67,9 +65,9 @@ export async function POST(
         expenseType: body.expenseType,
         vendorId: body.vendorId || null,
         currency: body.currency || 'USD',
-        exchangeRate,
         amount,
-        amountBase,
+        quantity: body.quantity || 1,
+        weight: body.weight || null,
         description: body.description || null,
         invoiceNumber: body.invoiceNumber || null,
         paymentStatus: body.paymentStatus || 'pending',

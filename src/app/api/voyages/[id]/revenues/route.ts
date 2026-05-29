@@ -18,6 +18,9 @@ export async function GET(
 
     const revenues = await db.voyageRevenue.findMany({
       where: { voyageId: id },
+      include: {
+        customer: { select: { id: true, name: true, code: true } },
+      },
       orderBy: { createdAt: 'desc' },
     })
 
@@ -54,21 +57,21 @@ export async function POST(
       )
     }
 
-    const exchangeRate = body.exchangeRate || 1
     const amount = body.amount
-    const amountBase = amount * exchangeRate
 
     const revenue = await db.voyageRevenue.create({
       data: {
         voyageId: id,
         revenueType: body.revenueType,
+        customerId: body.customerId || null,
         currency: body.currency || 'USD',
-        exchangeRate,
         amount,
-        amountBase,
+        quantity: body.quantity || 1,
+        weight: body.weight || null,
         description: body.description || null,
         invoiceNumber: body.invoiceNumber || null,
         paymentStatus: body.paymentStatus || 'pending',
+        dueDate: body.dueDate ? new Date(body.dueDate) : null,
         revenueDate: body.revenueDate ? new Date(body.revenueDate) : new Date(),
       },
     })

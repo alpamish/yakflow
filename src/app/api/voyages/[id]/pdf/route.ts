@@ -69,8 +69,8 @@ export async function GET(
     }
 
     // Calculate data
-    const totalRevenue = voyage.revenues.reduce((s, r) => s + (r.amountBase || 0), 0)
-    const totalExpenses = voyage.expenses.reduce((s, e) => s + (e.amountBase || 0), 0)
+    const totalRevenue = voyage.revenues.reduce((s, r) => s + (r.amount || 0), 0)
+    const totalExpenses = voyage.expenses.reduce((s, e) => s + (e.amount || 0), 0)
     const netProfit = totalRevenue - totalExpenses
     const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0
     const latestTeu = voyage.teuRecords.length > 0 ? voyage.teuRecords[0] : null
@@ -80,7 +80,7 @@ export async function GET(
     voyage.expenses.forEach(exp => {
       const type = exp.expenseType
       if (!expensesByType[type]) expensesByType[type] = { total: 0, byCurrency: {} }
-      expensesByType[type].total += exp.amountBase || 0
+      expensesByType[type].total += exp.amount || 0
       if (!expensesByType[type].byCurrency[exp.currency]) expensesByType[type].byCurrency[exp.currency] = 0
       expensesByType[type].byCurrency[exp.currency] += exp.amount
     })
@@ -90,7 +90,7 @@ export async function GET(
     voyage.revenues.forEach(rev => {
       const type = rev.revenueType
       if (!revenuesByType[type]) revenuesByType[type] = { total: 0, byCurrency: {} }
-      revenuesByType[type].total += rev.amountBase || 0
+      revenuesByType[type].total += rev.amount || 0
       if (!revenuesByType[type].byCurrency[rev.currency]) revenuesByType[type].byCurrency[rev.currency] = 0
       revenuesByType[type].byCurrency[rev.currency] += rev.amount
     })

@@ -282,6 +282,8 @@ export function ShipmentDetail() {
   const [editingRevenue, setEditingRevenue] = useState<any>(null)
   const [customers, setCustomers] = useState<{ id: string; name: string; code: string }[]>([])
   const [customerPopoverOpen, setCustomerPopoverOpen] = useState(false)
+  const [vendorPopoverOpen, setVendorPopoverOpen] = useState(false)
+  const [vendorSearchTerm, setVendorSearchTerm] = useState('')
   const [currencies, setCurrencies] = useState<{ code: string; name: string; symbol: string }[]>([])
   const [containerPrices, setContainerPrices] = useState<Record<string, string>>({})
   const [baseCurrency, setBaseCurrency] = useState('USD')
@@ -1301,15 +1303,94 @@ export function ShipmentDetail() {
                 </div>
                 <div className="space-y-2">
                   <Label>Vendor</Label>
-                  <Select value={expenseForm.vendorId} onValueChange={(v) => setExpenseForm({ ...expenseForm, vendorId: v === '_none' ? '' : v })}>
-                    <SelectTrigger><SelectValue placeholder="Select vendor" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_none">No Vendor</SelectItem>
-                      {vendors.map((v) => (
-                        <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={vendorPopoverOpen} onOpenChange={setVendorPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={vendorPopoverOpen}
+                        className="w-full justify-between font-normal"
+                      >
+                        {expenseForm.vendorId
+                          ? vendors.find((v) => v.id === expenseForm.vendorId)?.name || 'Select vendor'
+                          : 'Select vendor'}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] max-h-[300px] overflow-y-auto p-0">
+                      <Command>
+                        <CommandInput placeholder="Search vendors..." onValueChange={setVendorSearchTerm} />
+                        <CommandList className="max-h-[260px]">
+                          <CommandEmpty>
+                            {vendorSearchTerm ? (
+                              <Button
+                                variant="ghost"
+                                className="w-full justify-start gap-2 font-normal"
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetch('/api/vendors', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ name: vendorSearchTerm }),
+                                    })
+                                    const json = await res.json()
+                                    if (json.success) {
+                                      const newVendor = json.data
+                                      setVendors((prev) => [...prev, newVendor])
+                                      setExpenseForm({ ...expenseForm, vendorId: newVendor.id })
+                                      setVendorPopoverOpen(false)
+                                    }
+                                  } catch (e) {
+                                    console.error('Failed to create vendor', e)
+                                  }
+                                }}
+                              >
+                                <Plus className="h-4 w-4" />
+                                Create "{vendorSearchTerm}"
+                              </Button>
+                            ) : (
+                              'No vendors found.'
+                            )}
+                          </CommandEmpty>
+                          <CommandGroup>
+                            <CommandItem
+                              value="_none"
+                              onSelect={() => {
+                                setExpenseForm({ ...expenseForm, vendorId: '' })
+                                setVendorPopoverOpen(false)
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  'mr-2 h-4 w-4',
+                                  !expenseForm.vendorId ? 'opacity-100' : 'opacity-0'
+                                )}
+                              />
+                              No Vendor
+                            </CommandItem>
+                            {vendors.map((v) => (
+                              <CommandItem
+                                key={v.id}
+                                value={`${v.name} ${v.code}`}
+                                onSelect={() => {
+                                  setExpenseForm({ ...expenseForm, vendorId: v.id })
+                                  setVendorPopoverOpen(false)
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    'mr-2 h-4 w-4',
+                                    expenseForm.vendorId === v.id ? 'opacity-100' : 'opacity-0'
+                                  )}
+                                />
+                                {v.name} ({v.code})
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <div className="space-y-2">
                   <Label>Currency</Label>

@@ -30,11 +30,11 @@ export async function GET(
 
     // Calculate totals
     const totalRevenue = voyage.revenues.reduce(
-      (sum, r) => sum + (r.amountBase || 0),
+      (sum, r) => sum + (r.amount || 0),
       0
     )
     const totalExpense = voyage.expenses.reduce(
-      (sum, e) => sum + (e.amountBase || 0),
+      (sum, e) => sum + (e.amount || 0),
       0
     )
     const netProfit = totalRevenue - totalExpense
@@ -53,14 +53,14 @@ export async function GET(
     const expenseByType: Record<string, number> = {}
     for (const e of voyage.expenses) {
       const type = e.expenseType
-      expenseByType[type] = (expenseByType[type] || 0) + (e.amountBase || 0)
+      expenseByType[type] = (expenseByType[type] || 0) + (e.amount || 0)
     }
 
     // Revenue breakdown by type
     const revenueByType: Record<string, number> = {}
     for (const r of voyage.revenues) {
       const type = r.revenueType
-      revenueByType[type] = (revenueByType[type] || 0) + (r.amountBase || 0)
+      revenueByType[type] = (revenueByType[type] || 0) + (r.amount || 0)
     }
 
     return NextResponse.json({
