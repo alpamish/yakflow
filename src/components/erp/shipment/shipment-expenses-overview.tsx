@@ -44,17 +44,9 @@ const CHART_COLORS = [
   '#06b6d4', '#f97316', '#6366f1', '#ec4899', '#84cc16',
 ]
 
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-})
-
 const expenseTypeLabels: Record<string, string> = {
-  ocean_freight: 'Ocean Freight', dthc: 'DTHC', othc: 'OTHC', railways: 'Railways',
-  x_ray: 'X-Ray', inspection: 'Inspection', customs: 'Customs', fuel: 'Fuel',
-  toll: 'Toll', driver_expense: 'Driver Expense', port_charges: 'Port Charges',
-  handling_charges: 'Handling Charges', warehouse_charges: 'Warehouse Charges',
-  documentation: 'Documentation', agency_charges: 'Agency Charges', miscellaneous: 'Miscellaneous',
+  othc: 'OTHC', dthc: 'DTHC', x_ray: 'X-RAY', inspection: 'INSPECTION',
+  d_and_d: 'D&D', storage: 'STORAGE', doc: 'DOC', pick_up: 'PICK UP',
 }
 
 const paymentStatusColors: Record<string, string> = {
@@ -90,6 +82,35 @@ export function ShipmentExpensesOverview() {
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [paymentFilter, setPaymentFilter] = useState('')
+  const [chargeTypes, setChargeTypes] = useState<{ value: string; label: string }[]>([])
+  const [baseCurrency, setBaseCurrency] = useState('USD')
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(json => {
+        if (json.success && json.data?.baseCurrency) {
+          setBaseCurrency(json.data.baseCurrency)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: baseCurrency,
+    }).format(amount)
+  }
+
+  useEffect(() => {
+    fetch('/api/charge-types?type=expense')
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success) setChargeTypes(json.data.map((t: { value: string; label: string }) => ({ value: t.value, label: t.label })))
+      })
+      .catch(console.error)
+  }, [])
 
   const fetchExpenses = useCallback(async () => {
     setLoading(true)
@@ -165,7 +186,7 @@ export function ShipmentExpensesOverview() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Expenses</p>
-                <p className="text-xl font-bold">{currencyFormatter.format(totalExpenses)}</p>
+                <p className="text-xl font-bold">{formatCurrency(totalExpenses)}</p>
               </div>
             </div>
           </CardContent>
@@ -178,7 +199,7 @@ export function ShipmentExpensesOverview() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Pending Payments</p>
-                <p className="text-xl font-bold">{currencyFormatter.format(pendingAmount)}</p>
+                <p className="text-xl font-bold">{formatCurrency(pendingAmount)}</p>
               </div>
             </div>
           </CardContent>
@@ -191,7 +212,7 @@ export function ShipmentExpensesOverview() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Paid Amount</p>
-                <p className="text-xl font-bold">{currencyFormatter.format(paidAmount)}</p>
+                <p className="text-xl font-bold">{formatCurrency(paidAmount)}</p>
               </div>
             </div>
           </CardContent>
@@ -217,8 +238,8 @@ export function ShipmentExpensesOverview() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Types</SelectItem>
-                {Object.entries(expenseTypeLabels).map(([key, label]) => (
-                  <SelectItem key={key} value={key}>{label}</SelectItem>
+                {chargeTypes.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -276,7 +297,7 @@ export function ShipmentExpensesOverview() {
                       <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value: number) => currencyFormatter.format(value)} />
+                  <Tooltip formatter={(value: number) => formatCurrency(value)} />
                 </PieChart>
               </ResponsiveContainer>
             )}
@@ -337,10 +358,10 @@ export function ShipmentExpensesOverview() {
                         <TableCell>{expenseTypeLabels[e.expenseType] || e.expenseType}</TableCell>
                         <TableCell>{e.vendor?.name || '—'}</TableCell>
                         <TableCell>{e.currency}</TableCell>
-                        <TableCell className="text-right">{currencyFormatter.format(e.amount)}</TableCell>
-                        <TableCell className="text-right">{currencyFormatter.format(e.tax)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(e.amount)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(e.tax)}</TableCell>
                         <TableCell className="text-right font-medium">
-                          {currencyFormatter.format((e.amountBase || 0) + (e.taxBase || 0))}
+                          {formatCurrency((e.amountBase || 0) + (e.taxBase || 0))}
                         </TableCell>
                         <TableCell>
                           <Badge variant="secondary" className={paymentStatusColors[e.paymentStatus] || ''}>

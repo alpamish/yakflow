@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Ship, Plane, Truck, Loader2 } from 'lucide-react'
+import { Ship, Plane, Truck, Loader2, Check, ChevronsUpDown, Plus } from 'lucide-react'
 
 import {
   Dialog,
@@ -25,6 +25,20 @@ import {
 } from '@/components/ui/select'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import { cn } from '@/lib/utils'
 
 interface ShipmentFormProps {
   open: boolean
@@ -70,6 +84,9 @@ export function ShipmentForm({ open, onOpenChange, shipment, onSuccess }: Shipme
   const [customers, setCustomers] = useState<Customer[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [customerPopoverOpen, setCustomerPopoverOpen] = useState(false)
+  const [customerSearchValue, setCustomerSearchValue] = useState('')
+  const [creatingCustomer, setCreatingCustomer] = useState(false)
 
   const isEditing = !!shipment?.id
 
@@ -161,7 +178,7 @@ export function ShipmentForm({ open, onOpenChange, shipment, onSuccess }: Shipme
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] p-0">
+      <DialogContent className="sm:max-w-3xl max-w-4xl max-h-[90vh] p-0">
         <DialogHeader className="px-6 pt-6 pb-2">
           <DialogTitle>
             {isEditing ? 'Edit Shipment' : 'New Shipment'}
@@ -236,22 +253,111 @@ export function ShipmentForm({ open, onOpenChange, shipment, onSuccess }: Shipme
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Customer</Label>
-                <Select
-                  value={form.customerId}
-                  onValueChange={(v) => handleChange('customerId', v === '_none' ? '' : v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select customer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none">No Customer</SelectItem>
-                    {customers.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name} ({c.code})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={customerPopoverOpen} onOpenChange={(open) => {
+                  setCustomerPopoverOpen(open)
+                  if (open) setCustomerSearchValue('')
+                }}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={customerPopoverOpen}
+                      className="w-full justify-between font-normal"
+                    >
+                      {form.customerId
+                        ? customers.find((c) => c.id === form.customerId)?.name || 'Select customer'
+                        : 'Select customer'}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+                    <Command>
+                      <CommandInput
+                        placeholder="Search customers..."
+                        value={customerSearchValue}
+                        onValueChange={setCustomerSearchValue}
+                      />
+                      <CommandList>
+                        <CommandEmpty>
+                          {customerSearchValue ? (
+                            <Button
+                              variant="ghost"
+                              className="w-full justify-start gap-2"
+                              onClick={async () => {
+                                setCreatingCustomer(true)
+                                try {
+                                  const res = await fetch('/api/customers', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ name: customerSearchValue }),
+                                  })
+                                  const json = await res.json()
+                                  if (json.success) {
+                                    setCustomers((prev) => [...prev, json.data])
+                                    handleChange('customerId', json.data.id)
+                                    setCustomerPopoverOpen(false)
+                                    setCustomerSearchValue('')
+                                  } else {
+                                    setError(json.error || 'Failed to create customer')
+                                  }
+                                } catch {
+                                  setError('Network error. Please try again.')
+                                } finally {
+                                  setCreatingCustomer(false)
+                                }
+                              }}
+                              disabled={creatingCustomer}
+                            >
+                              {creatingCustomer ? (
+                                <Loader2 className="size-4 animate-spin" />
+                              ) : (
+                                <Plus className="size-4" />
+                              )}
+                              Create &quot;{customerSearchValue}&quot;
+                            </Button>
+                          ) : (
+                            'No customers found.'
+                          )}
+                        </CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value="_none"
+                            onSelect={() => {
+                              handleChange('customerId', '')
+                              setCustomerPopoverOpen(false)
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                !form.customerId ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            No Customer
+                          </CommandItem>
+                          {customers.map((c) => (
+                            <CommandItem
+                              key={c.id}
+                              value={`${c.name} ${c.code}`}
+                              onSelect={() => {
+                                handleChange('customerId', c.id)
+                                setCustomerPopoverOpen(false)
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  form.customerId === c.id ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {c.name} ({c.code})
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
               <div className="space-y-2">
                 <Label>Status</Label>

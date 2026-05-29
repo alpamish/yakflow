@@ -84,6 +84,7 @@ const EXPENSE_LABELS: Record<string, string> = {
   inspection: 'Inspection', fuel: 'Fuel', toll: 'Toll', driver_expense: 'Driver Expense',
   handling_charges: 'Handling Charges', warehouse_charges: 'Warehouse Charges',
   agency_charges: 'Agency Charges',
+  d_and_d: 'D&D', storage: 'STORAGE', doc: 'DOC', pick_up: 'PICK UP',
 }
 
 const REVENUE_LABELS: Record<string, string> = {
@@ -93,6 +94,8 @@ const REVENUE_LABELS: Record<string, string> = {
   customs_charges: 'Customs Charges', documentation_fees: 'Documentation Fees',
   handling_fees: 'Handling Fees', storage_charges: 'Storage Charges',
   other_charges: 'Other Charges',
+  othc: 'OTHC', dthc: 'DTHC', x_ray: 'X-RAY', inspection: 'INSPECTION',
+  d_and_d: 'D&D', storage: 'STORAGE', doc: 'DOC', pick_up: 'PICK UP',
 }
 
 function getCurrencySymbol(code: string): string {
@@ -108,12 +111,12 @@ const S = {
   table: 'w-full border-collapse text-sm',
   header: 'bg-teal-700 text-white font-semibold text-xs uppercase tracking-wider px-3 py-2.5 border-b-2 border-teal-800 text-left whitespace-nowrap',
   cell: 'px-3 py-2 border-b border-muted text-foreground',
-  cellR: 'px-3 py-2 border-b border-muted text-foreground text-right font-mono tabular-nums',
+  cellR: 'px-3 py-2 border-b border-muted text-foreground text-left font-mono tabular-nums',
   cellB: 'px-3 py-2 border-b border-muted text-foreground font-semibold',
-  cellBR: 'px-3 py-2 border-b border-muted text-foreground font-semibold text-right font-mono tabular-nums',
+  cellBR: 'px-3 py-2 border-b border-muted text-foreground font-semibold text-left font-mono tabular-nums',
   totalRow: 'bg-teal-700/10',
   totalCell: 'px-3 py-2.5 font-bold text-foreground text-sm',
-  totalCellR: 'px-3 py-2.5 font-bold text-foreground text-sm text-right font-mono tabular-nums',
+  totalCellR: 'px-3 py-2.5 font-bold text-foreground text-sm text-left font-mono tabular-nums',
   subHeader: 'bg-muted/50 text-xs font-semibold text-muted-foreground px-3 py-1.5 uppercase tracking-wider',
   evenRow: 'bg-muted/20',
 }
@@ -122,7 +125,6 @@ export function SummaryPage() {
   const [data, setData] = useState<SummaryData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
   const fetchData = async () => {
     setLoading(true)
     setError(null)
@@ -242,6 +244,19 @@ export function SummaryPage() {
     URL.revokeObjectURL(url)
   }
 
+  const handleExportPDF = async () => {
+    if (!data) return
+    const { pdf } = await import('@react-pdf/renderer')
+    const { SummaryPDF } = await import('./summary-pdf')
+    const blob = await pdf(<SummaryPDF data={data} />).toBlob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'erp-summary-' + new Date().toISOString().split('T')[0] + '.pdf'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -251,7 +266,7 @@ export function SummaryPage() {
             <FileSpreadsheet className="size-5" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">ERP Summary</h1>
+            <h1 className="text-2xl font-bold">Summary</h1>
             <p className="text-sm text-muted-foreground">{data.companyInfo.name} &mdash; Comprehensive spreadsheet overview</p>
           </div>
         </div>
@@ -261,6 +276,9 @@ export function SummaryPage() {
           </Button>
           <Button variant="outline" size="sm" onClick={handleExportCSV}>
             <Download className="size-4 mr-1" /> Export CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleExportPDF}>
+            <FileSpreadsheet className="size-4 mr-1" /> Export PDF
           </Button>
         </div>
       </div>
@@ -324,10 +342,11 @@ export function SummaryPage() {
                   <td className={S.totalCellR}>{pct(totalProfit, totalRevenue)}</td>
                 </tr>
                 <tr>
-                  <td className={S.cell} colSpan={2}><span className="text-muted-foreground">Profit Margin</span></td>
+                  <td className={S.cell}><span className="text-muted-foreground">Profit Margin</span></td>
                   <td className={S.cellR}>{data.shipmentSummary.totalRevenue > 0 ? ((data.shipmentSummary.netProfit / data.shipmentSummary.totalRevenue) * 100).toFixed(1) + '%' : '--'}</td>
                   <td className={S.cellR}>{data.voyageSummary.totalRevenue > 0 ? ((data.voyageSummary.netProfit / data.voyageSummary.totalRevenue) * 100).toFixed(1) + '%' : '--'}</td>
                   <td className={S.cellBR}>{totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) + '%' : '--'}</td>
+                  <td className={S.cellR}>--</td>
                 </tr>
               </tbody>
             </table>

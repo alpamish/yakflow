@@ -184,6 +184,7 @@ model Container {
   grossWeight     Float?
   netWeight       Float?
   volume          Float?
+  quantity        Int      @default(1)
   status          String   @default("empty") // empty, loaded, in_transit, arrived, delivered
   currentLocation String?
   deliveryStatus  String   @default("pending") // pending, picked_up, in_transit, delivered, returned
@@ -195,7 +196,7 @@ model ShipmentExpense {
   id            String   @id @default(cuid())
   shipmentId    String
   shipment      Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  expenseType   String   // ocean_freight, dthc, othc, railways, x_ray, inspection, customs, fuel, toll, driver_expense, port_charges, handling_charges, warehouse_charges, documentation, agency_charges, miscellaneous
+  expenseType   String   // othc, dthc, x_ray, inspection, d_and_d, storage, doc, pick_up
   vendorId      String?
   vendor        Vendor?  @relation(fields: [vendorId], references: [id])
   currency      String   @default("USD")
@@ -219,7 +220,7 @@ model ShipmentRevenue {
   shipment      Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   customerId    String?
   customer      Customer? @relation(fields: [customerId], references: [id])
-  revenueType   String   // freight_charges, delivery_charges, customs_charges, documentation_fees, handling_fees, storage_charges, other_charges
+  revenueType   String   // othc, dthc, x_ray, inspection, d_and_d, storage, doc, pick_up
   invoiceNumber String?
   currency      String   @default("USD")
   exchangeRate  Float    @default(1)
@@ -311,6 +312,22 @@ model VoyageExpense {
   expenseDate   DateTime @default(now())
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+// ============================================
+// REFERENCE DATA
+// ============================================
+
+model ChargeType {
+  id        String   @id @default(cuid())
+  type      String   // expense, revenue
+  value     String   // othc, dthc, x_ray, etc.
+  label     String   // OTHC, DTHC, X-RAY, etc.
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([type, value])
 }
 
 // ============================================

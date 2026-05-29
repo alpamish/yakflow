@@ -124,6 +124,8 @@ function getNotificationIcon(type: string) {
 export function ERPHeader() {
   const { currentPage, goBack, navigateTo } = useNavigationStore()
   const { theme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
 
   const pageInfo = pageInfoMap[currentPage] || { label: 'Dashboard', icon: LayoutDashboard }
 
@@ -359,16 +361,18 @@ export function ERPHeader() {
             className="size-9"
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           >
-            {theme === 'dark' ? (
+            {mounted && theme === 'dark' ? (
               <Sun className="size-4" />
-            ) : (
+            ) : mounted ? (
               <Moon className="size-4" />
+            ) : (
+              <div className="size-4" />
             )}
             <span className="sr-only">Toggle theme</span>
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+          {mounted ? (theme === 'dark' ? 'Light Mode' : 'Dark Mode') : ''}
         </TooltipContent>
       </Tooltip>
 

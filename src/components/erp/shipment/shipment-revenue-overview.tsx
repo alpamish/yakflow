@@ -40,15 +40,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-})
-
 const revenueTypeLabels: Record<string, string> = {
-  freight_charges: 'Freight Charges', delivery_charges: 'Delivery Charges',
-  customs_charges: 'Customs Charges', documentation_fees: 'Documentation Fees',
-  handling_fees: 'Handling Fees', storage_charges: 'Storage Charges', other_charges: 'Other Charges',
+  othc: 'OTHC', dthc: 'DTHC', x_ray: 'X-RAY', inspection: 'INSPECTION',
+  d_and_d: 'D&D', storage: 'STORAGE', doc: 'DOC', pick_up: 'PICK UP',
 }
 
 const paymentStatusColors: Record<string, string> = {
@@ -79,6 +73,35 @@ export function ShipmentRevenueOverview() {
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [paymentFilter, setPaymentFilter] = useState('')
+  const [chargeTypes, setChargeTypes] = useState<{ value: string; label: string }[]>([])
+  const [baseCurrency, setBaseCurrency] = useState('USD')
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(json => {
+        if (json.success && json.data?.baseCurrency) {
+          setBaseCurrency(json.data.baseCurrency)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: baseCurrency,
+    }).format(amount)
+  }
+
+  useEffect(() => {
+    fetch('/api/charge-types?type=revenue')
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success) setChargeTypes(json.data.map((t: { value: string; label: string }) => ({ value: t.value, label: t.label })))
+      })
+      .catch(console.error)
+  }, [])
 
   const fetchRevenues = useCallback(async () => {
     setLoading(true)
@@ -154,7 +177,7 @@ export function ShipmentRevenueOverview() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Revenue</p>
-                <p className="text-xl font-bold text-emerald-600">{currencyFormatter.format(totalRevenue)}</p>
+                <p className="text-xl font-bold text-emerald-600">{formatCurrency(totalRevenue)}</p>
               </div>
             </div>
           </CardContent>
@@ -167,7 +190,7 @@ export function ShipmentRevenueOverview() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Pending Payments</p>
-                <p className="text-xl font-bold">{currencyFormatter.format(pendingAmount)}</p>
+                <p className="text-xl font-bold">{formatCurrency(pendingAmount)}</p>
               </div>
             </div>
           </CardContent>
@@ -180,7 +203,7 @@ export function ShipmentRevenueOverview() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Overdue Amount</p>
-                <p className="text-xl font-bold text-red-600">{currencyFormatter.format(overdueAmount)}</p>
+                <p className="text-xl font-bold text-red-600">{formatCurrency(overdueAmount)}</p>
               </div>
             </div>
           </CardContent>
@@ -206,8 +229,8 @@ export function ShipmentRevenueOverview() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Types</SelectItem>
-                {Object.entries(revenueTypeLabels).map(([key, label]) => (
-                  <SelectItem key={key} value={key}>{label}</SelectItem>
+                {chargeTypes.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -256,7 +279,7 @@ export function ShipmentRevenueOverview() {
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                   <XAxis type="number" tick={{ fontSize: 10 }} />
                   <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={100} />
-                  <Tooltip formatter={(value: number) => currencyFormatter.format(value)} />
+                  <Tooltip formatter={(value: number) => formatCurrency(value)} />
                   <Bar dataKey="value" name="Revenue" fill="#10b981" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -319,10 +342,10 @@ export function ShipmentRevenueOverview() {
                         <TableCell>{r.customer?.name || '—'}</TableCell>
                         <TableCell>{revenueTypeLabels[r.revenueType] || r.revenueType}</TableCell>
                         <TableCell>{r.invoiceNumber || '—'}</TableCell>
-                        <TableCell className="text-right">{currencyFormatter.format(r.amount)}</TableCell>
-                        <TableCell className="text-right">{currencyFormatter.format(r.tax)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(r.amount)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(r.tax)}</TableCell>
                         <TableCell className="text-right font-medium">
-                          {currencyFormatter.format((r.amountBase || 0) + (r.taxBase || 0))}
+                          {formatCurrency((r.amountBase || 0) + (r.taxBase || 0))}
                         </TableCell>
                         <TableCell>
                           <Badge variant="secondary" className={paymentStatusColors[r.paymentStatus] || ''}>

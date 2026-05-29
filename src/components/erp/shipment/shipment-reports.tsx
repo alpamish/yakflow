@@ -33,11 +33,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-})
-
 const reportTypes = [
   { value: 'shipment_summary', label: 'Shipment Summary' },
   { value: 'profitability', label: 'Profitability Report' },
@@ -82,6 +77,25 @@ const statusColors: Record<string, string> = {
 
 export function ShipmentReports() {
   const [reportType, setReportType] = useState('shipment_summary')
+  const [baseCurrency, setBaseCurrency] = useState('USD')
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(json => {
+        if (json.success && json.data?.baseCurrency) {
+          setBaseCurrency(json.data.baseCurrency)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: baseCurrency,
+    }).format(amount)
+  }
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [data, setData] = useState<ShipmentSummary[]>([])
@@ -250,10 +264,10 @@ export function ShipmentReports() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-center">{s.containerCount ?? 0}</TableCell>
-                      <TableCell className="text-right">{currencyFormatter.format(s.totalRevenues)}</TableCell>
-                      <TableCell className="text-right">{currencyFormatter.format(s.totalExpenses)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(s.totalRevenues)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(s.totalExpenses)}</TableCell>
                       <TableCell className={`text-right font-medium ${profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                        {currencyFormatter.format(profit)}
+                        {formatCurrency(profit)}
                       </TableCell>
                     </TableRow>
                   )
@@ -289,10 +303,10 @@ export function ShipmentReports() {
                       <TableCell className="text-sm">
                         {s.originCountry || '—'} → {s.destinationCountry || '—'}
                       </TableCell>
-                      <TableCell className="text-right">{currencyFormatter.format(s.totalRevenues)}</TableCell>
-                      <TableCell className="text-right">{currencyFormatter.format(s.totalExpenses)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(s.totalRevenues)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(s.totalExpenses)}</TableCell>
                       <TableCell className={`text-right font-medium ${profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                        {currencyFormatter.format(profit)}
+                        {formatCurrency(profit)}
                       </TableCell>
                       <TableCell className={`text-right ${margin >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                         {margin.toFixed(1)}%
@@ -332,10 +346,10 @@ export function ShipmentReports() {
                   <TableRow key={c.name}>
                     <TableCell className="font-medium">{c.name}</TableCell>
                     <TableCell className="text-center">{c.shipments}</TableCell>
-                    <TableCell className="text-right">{currencyFormatter.format(c.revenue)}</TableCell>
-                    <TableCell className="text-right">{currencyFormatter.format(c.expenses)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(c.revenue)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(c.expenses)}</TableCell>
                     <TableCell className={`text-right font-medium ${c.revenue - c.expenses >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                      {currencyFormatter.format(c.revenue - c.expenses)}
+                      {formatCurrency(c.revenue - c.expenses)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -372,10 +386,10 @@ export function ShipmentReports() {
                   <TableRow key={r.route}>
                     <TableCell className="font-medium">{r.route}</TableCell>
                     <TableCell className="text-center">{r.shipments}</TableCell>
-                    <TableCell className="text-right">{currencyFormatter.format(r.revenue)}</TableCell>
-                    <TableCell className="text-right">{currencyFormatter.format(r.expenses)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(r.revenue)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(r.expenses)}</TableCell>
                     <TableCell className={`text-right font-medium ${r.revenue - r.expenses >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                      {currencyFormatter.format(r.revenue - r.expenses)}
+                      {formatCurrency(r.revenue - r.expenses)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -417,7 +431,7 @@ export function ShipmentReports() {
                     <TableCell className="font-medium">{c.country}</TableCell>
                     <TableCell className="text-center">{c.asOrigin}</TableCell>
                     <TableCell className="text-center">{c.asDestination}</TableCell>
-                    <TableCell className="text-right">{currencyFormatter.format(c.revenue)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(c.revenue)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -456,7 +470,7 @@ export function ShipmentReports() {
                     </TableCell>
                     <TableCell className="text-right">
                       {(s.containerCount ?? 0) > 0
-                        ? currencyFormatter.format(s.totalRevenues / s.containerCount)
+                        ? formatCurrency(s.totalRevenues / s.containerCount)
                         : '—'}
                     </TableCell>
                   </TableRow>
@@ -488,8 +502,8 @@ export function ShipmentReports() {
                     <TableCell className="text-sm">
                       {s.originCountry || '—'} → {s.destinationCountry || '—'}
                     </TableCell>
-                    <TableCell className="text-right">{currencyFormatter.format(s.totalRevenues)}</TableCell>
-                    <TableCell className="text-right">{currencyFormatter.format(s.totalExpenses)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(s.totalRevenues)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(s.totalExpenses)}</TableCell>
                     <TableCell>
                       <Badge variant="secondary" className={statusColors[s.status] || ''}>
                         {statusLabels[s.status] || s.status}

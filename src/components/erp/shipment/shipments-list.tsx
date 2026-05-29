@@ -106,13 +106,6 @@ const directionColors: Record<string, string> = {
   export: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-400',
 }
 
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 0,
-})
-
 function TransportModeIcon({ mode }: { mode: string }) {
   switch (mode) {
     case 'sea':
@@ -130,6 +123,27 @@ export function ShipmentsList() {
   const { selectShipment } = useNavigationStore()
 
   const [shipments, setShipments] = useState<Shipment[]>([])
+  const [baseCurrency, setBaseCurrency] = useState('USD')
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(json => {
+        if (json.success && json.data?.baseCurrency) {
+          setBaseCurrency(json.data.baseCurrency)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: baseCurrency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount)
+  }
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -466,10 +480,10 @@ export function ShipmentsList() {
                         </TableCell>
                         <TableCell className="text-center">{s.containerCount}</TableCell>
                         <TableCell className="text-right whitespace-nowrap">
-                          {currencyFormatter.format(s.totalRevenues)}
+                          {formatCurrency(s.totalRevenues)}
                         </TableCell>
                         <TableCell className="text-right whitespace-nowrap">
-                          {currencyFormatter.format(s.totalExpenses)}
+                          {formatCurrency(s.totalExpenses)}
                         </TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>

@@ -64,6 +64,7 @@ export async function POST(
         grossWeight: body.grossWeight || null,
         netWeight: body.netWeight || null,
         volume: body.volume || null,
+        quantity: body.quantity || 1,
         status: body.status || 'empty',
         currentLocation: body.currentLocation || null,
         deliveryStatus: body.deliveryStatus || 'pending',

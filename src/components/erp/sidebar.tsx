@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useTheme } from 'next-themes'
 import {
   LayoutDashboard,
@@ -110,6 +110,8 @@ const financeItems: NavItem[] = [
 export function ERPSidebar() {
   const { currentPage, navigateTo } = useNavigationStore()
   const { theme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     'shipment-ops': true,
     'voyage-finance': true,
@@ -309,12 +311,14 @@ export function ERPSidebar() {
                   Profile
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-                  {theme === 'dark' ? (
+                  {mounted && theme === 'dark' ? (
                     <Sun className="mr-2 size-4" />
-                  ) : (
+                  ) : mounted ? (
                     <Moon className="mr-2 size-4" />
+                  ) : (
+                    <div className="mr-2 size-4" />
                   )}
-                  {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+                  {mounted ? (theme === 'dark' ? 'Light Mode' : 'Dark Mode') : ''}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem variant="destructive">

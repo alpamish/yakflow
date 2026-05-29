@@ -79,6 +79,7 @@ const EXPENSE_LABELS: Record<string, string> = {
   documentation: 'Documentation', agency_charges: 'Agency', miscellaneous: 'Miscellaneous',
   bunker_costs: 'Bunker Costs', canal_fees: 'Canal Fees', rail_costs: 'Rail Costs',
   terminal_handling: 'Terminal Handling', crew_costs: 'Crew Costs',
+  d_and_d: 'D&D', storage: 'STORAGE', doc: 'DOC', pick_up: 'PICK UP',
 }
 
 const currencyFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })

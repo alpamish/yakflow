@@ -7,17 +7,13 @@ const statusLabels: Record<string, string> = {
 }
 
 const expenseTypeLabels: Record<string, string> = {
-  ocean_freight: 'Ocean Freight', dthc: 'DTHC', othc: 'OTHC', railways: 'Railways',
-  x_ray: 'X-Ray', inspection: 'Inspection', customs: 'Customs', fuel: 'Fuel',
-  toll: 'Toll', driver_expense: 'Driver Expense', port_charges: 'Port Charges',
-  handling_charges: 'Handling Charges', warehouse_charges: 'Warehouse Charges',
-  documentation: 'Documentation', agency_charges: 'Agency Charges', miscellaneous: 'Miscellaneous',
+  othc: 'OTHC', dthc: 'DTHC', x_ray: 'X-RAY', inspection: 'INSPECTION',
+  d_and_d: 'D&D', storage: 'STORAGE', doc: 'DOC', pick_up: 'PICK UP',
 }
 
 const revenueTypeLabels: Record<string, string> = {
-  freight_charges: 'Freight Charges', delivery_charges: 'Delivery Charges',
-  customs_charges: 'Customs Charges', documentation_fees: 'Documentation Fees',
-  handling_fees: 'Handling Fees', storage_charges: 'Storage Charges', other_charges: 'Other Charges',
+  othc: 'OTHC', dthc: 'DTHC', x_ray: 'X-RAY', inspection: 'INSPECTION',
+  d_and_d: 'D&D', storage: 'STORAGE', doc: 'DOC', pick_up: 'PICK UP',
 }
 
 const fmt = (n: number) => Math.round((n || 0) * 100) / 100

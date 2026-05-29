@@ -103,6 +103,7 @@ async function main() {
   await prisma.voyageExpense.deleteMany()
   await prisma.voyageRevenue.deleteMany()
   await prisma.voyageTEU.deleteMany()
+  await prisma.chargeType.deleteMany()
   await prisma.invoice.deleteMany()
   await prisma.shipment.deleteMany()
   await prisma.voyage.deleteMany()
@@ -443,6 +444,37 @@ async function main() {
   console.log(`✅ Created ${totalContainers} containers`)
   console.log(`✅ Created ${totalRevenues} shipment revenues`)
   console.log(`✅ Created ${totalExpenses} shipment expenses`)
+
+  // ============================================
+  // 9. CHARGE TYPES
+  // ============================================
+  const chargeTypes = [
+    { type: 'expense', value: 'othc', label: 'OTHC' },
+    { type: 'expense', value: 'dthc', label: 'DTHC' },
+    { type: 'expense', value: 'x_ray', label: 'X-RAY' },
+    { type: 'expense', value: 'inspection', label: 'INSPECTION' },
+    { type: 'expense', value: 'd_and_d', label: 'D&D' },
+    { type: 'expense', value: 'storage', label: 'STORAGE' },
+    { type: 'expense', value: 'doc', label: 'DOC' },
+    { type: 'expense', value: 'pick_up', label: 'PICK UP' },
+    { type: 'revenue', value: 'othc', label: 'OTHC' },
+    { type: 'revenue', value: 'dthc', label: 'DTHC' },
+    { type: 'revenue', value: 'x_ray', label: 'X-RAY' },
+    { type: 'revenue', value: 'inspection', label: 'INSPECTION' },
+    { type: 'revenue', value: 'd_and_d', label: 'D&D' },
+    { type: 'revenue', value: 'storage', label: 'STORAGE' },
+    { type: 'revenue', value: 'doc', label: 'DOC' },
+    { type: 'revenue', value: 'pick_up', label: 'PICK UP' },
+  ]
+
+  for (const ct of chargeTypes) {
+    await prisma.chargeType.upsert({
+      where: { type_value: { type: ct.type, value: ct.value } },
+      update: { label: ct.label },
+      create: ct,
+    })
+  }
+  console.log(`✅ Created ${chargeTypes.length} charge types`)
 
   // ============================================
   // SUMMARY

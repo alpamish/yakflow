@@ -47,11 +47,6 @@ import { useNavigationStore } from '@/lib/store'
 
 const CHART_COLORS = ['#10b981', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316']
 
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-})
-
 interface ProfitRow {
   shipmentId: string
   shipmentNumber: string
@@ -67,6 +62,25 @@ export function ShipmentProfitability() {
   const { selectShipment } = useNavigationStore()
 
   const [profitRows, setProfitRows] = useState<ProfitRow[]>([])
+  const [baseCurrency, setBaseCurrency] = useState('USD')
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(json => {
+        if (json.success && json.data?.baseCurrency) {
+          setBaseCurrency(json.data.baseCurrency)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: baseCurrency,
+    }).format(amount)
+  }
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<'profitMargin' | 'netProfit' | 'grossRevenue'>('profitMargin')
@@ -221,7 +235,7 @@ export function ShipmentProfitability() {
               <div>
                 <p className="text-sm text-muted-foreground">Total Profit</p>
                 <p className={`text-xl font-bold ${totalProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {currencyFormatter.format(totalProfit)}
+                  {formatCurrency(totalProfit)}
                 </p>
               </div>
             </div>
@@ -290,7 +304,7 @@ export function ShipmentProfitability() {
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                   <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                   <YAxis tick={{ fontSize: 10 }} />
-                  <Tooltip formatter={(value: number) => currencyFormatter.format(value)} />
+                  <Tooltip formatter={(value: number) => formatCurrency(value)} />
                   <Bar dataKey="profit" name="Profit" fill="#10b981" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -312,7 +326,7 @@ export function ShipmentProfitability() {
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                   <XAxis type="number" tick={{ fontSize: 10 }} />
                   <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={120} />
-                  <Tooltip formatter={(value: number) => currencyFormatter.format(value)} />
+                  <Tooltip formatter={(value: number) => formatCurrency(value)} />
                   <Bar dataKey="profit" name="Profit" fill="#14b8a6" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -432,10 +446,10 @@ export function ShipmentProfitability() {
                       </TableCell>
                       <TableCell>{r.customerName}</TableCell>
                       <TableCell className="text-sm">{r.route}</TableCell>
-                      <TableCell className="text-right">{currencyFormatter.format(r.grossRevenue)}</TableCell>
-                      <TableCell className="text-right">{currencyFormatter.format(r.totalExpense)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(r.grossRevenue)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(r.totalExpense)}</TableCell>
                       <TableCell className={`text-right font-medium ${r.netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                        {currencyFormatter.format(r.netProfit)}
+                        {formatCurrency(r.netProfit)}
                       </TableCell>
                       <TableCell className="text-right">
                         <Badge

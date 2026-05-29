@@ -18,8 +18,12 @@ import {
   TrendingUp,
   Loader2,
   Container,
+  Check,
+  ChevronsUpDown,
+  Search,
 } from 'lucide-react'
 import { format } from 'date-fns'
+import { cn } from '@/lib/utils'
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -28,6 +32,20 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ChargeTypeCombobox } from '@/components/erp/shipment/charge-type-combobox'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -54,6 +72,16 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { useNavigationStore } from '@/lib/store'
 import { ShipmentForm } from './shipment-form'
 import {
@@ -115,11 +143,6 @@ const paymentStatusColors: Record<string, string> = {
   overdue: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
 }
 
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-})
-
 const CHART_COLORS = ['#10b981', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#6366f1']
 
 interface ShipmentData {
@@ -162,6 +185,7 @@ interface ContainerData {
   grossWeight: number | null
   netWeight: number | null
   volume: number | null
+  quantity: number
   status: string
   currentLocation: string | null
   deliveryStatus: string
@@ -216,17 +240,18 @@ export function ShipmentDetail() {
     sealNumber: '',
     grossWeight: '',
     netWeight: '',
-    volume: '',
+    volume: '1',
     status: 'empty',
     currentLocation: '',
     deliveryStatus: 'pending',
   })
   const [containerSubmitting, setContainerSubmitting] = useState(false)
+  const [editingContainer, setEditingContainer] = useState<any>(null)
 
   // Expense form
   const [showExpenseForm, setShowExpenseForm] = useState(false)
   const [expenseForm, setExpenseForm] = useState({
-    expenseType: 'ocean_freight',
+    expenseType: 'othc',
     vendorId: '',
     currency: 'USD',
     exchangeRate: '1',
@@ -237,13 +262,14 @@ export function ShipmentDetail() {
     notes: '',
   })
   const [expenseSubmitting, setExpenseSubmitting] = useState(false)
+  const [editingExpense, setEditingExpense] = useState<any>(null)
   const [vendors, setVendors] = useState<{ id: string; name: string; code: string }[]>([])
 
   // Revenue form
   const [showRevenueForm, setShowRevenueForm] = useState(false)
   const [revenueForm, setRevenueForm] = useState({
     customerId: '',
-    revenueType: 'freight_charges',
+    revenueType: 'othc',
     invoiceNumber: '',
     currency: 'USD',
     exchangeRate: '1',
@@ -253,7 +279,31 @@ export function ShipmentDetail() {
     paymentStatus: 'pending',
   })
   const [revenueSubmitting, setRevenueSubmitting] = useState(false)
+  const [editingRevenue, setEditingRevenue] = useState<any>(null)
   const [customers, setCustomers] = useState<{ id: string; name: string; code: string }[]>([])
+  const [customerPopoverOpen, setCustomerPopoverOpen] = useState(false)
+  const [currencies, setCurrencies] = useState<{ code: string; name: string; symbol: string }[]>([])
+  const [containerPrices, setContainerPrices] = useState<Record<string, string>>({})
+  const [baseCurrency, setBaseCurrency] = useState('USD')
+  const [deletingItem, setDeletingItem] = useState<{ type: string; id: string } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(json => {
+        if (json.success && json.data?.baseCurrency) {
+          setBaseCurrency(json.data.baseCurrency)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: baseCurrency,
+    }).format(amount)
+  }
 
   // Profit data
   const [profitData, setProfitData] = useState<{
@@ -267,9 +317,9 @@ export function ShipmentDetail() {
     expenseByType: Record<string, number>
   } | null>(null)
 
-  const fetchShipment = useCallback(async () => {
+  const fetchShipment = useCallback(async (showLoader = true) => {
     if (!selectedShipmentId) return
-    setLoading(true)
+    if (showLoader) setLoading(true)
     try {
       const res = await fetch(`/api/shipments/${selectedShipmentId}`)
       const json = await res.json()
@@ -277,7 +327,7 @@ export function ShipmentDetail() {
     } catch (err) {
       console.error('Failed to fetch shipment:', err)
     } finally {
-      setLoading(false)
+      if (showLoader) setLoading(false)
     }
   }, [selectedShipmentId])
 
@@ -306,6 +356,10 @@ export function ShipmentDetail() {
       .then((r) => r.json())
       .then((json) => { if (json.success) setCustomers(json.data || []) })
       .catch(() => {})
+    fetch('/api/currencies?isActive=true')
+      .then((r) => r.json())
+      .then((json) => { if (json.success) setCurrencies(json.data || []) })
+      .catch(() => {})
   }, [])
 
   const handleDelete = async () => {
@@ -329,26 +383,50 @@ export function ShipmentDetail() {
     if (!selectedShipmentId) return
     setContainerSubmitting(true)
     try {
-      const res = await fetch(`/api/shipments/${selectedShipmentId}/containers`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...containerForm,
-          grossWeight: containerForm.grossWeight ? parseFloat(containerForm.grossWeight) : null,
-          netWeight: containerForm.netWeight ? parseFloat(containerForm.netWeight) : null,
-          volume: containerForm.volume ? parseFloat(containerForm.volume) : null,
-        }),
-      })
-      const json = await res.json()
-      if (json.success) {
-        setShowContainerForm(false)
-        setContainerForm({
-          containerNumber: '', containerType: '20DC', containerSize: '20',
-          sealNumber: '', grossWeight: '', netWeight: '', volume: '',
-          status: 'empty', currentLocation: '', deliveryStatus: 'pending',
+      const quantity = Math.max(1, parseInt(containerForm.volume || '1') || 1)
+      if (editingContainer) {
+        const res = await fetch(`/api/shipments/${selectedShipmentId}/containers/${editingContainer.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            containerNumber: containerForm.containerNumber,
+            containerType: containerForm.containerType,
+            containerSize: containerForm.containerSize,
+            sealNumber: containerForm.sealNumber || null,
+            grossWeight: containerForm.grossWeight ? parseFloat(containerForm.grossWeight) : null,
+            netWeight: containerForm.netWeight ? parseFloat(containerForm.netWeight) : null,
+            quantity,
+            status: containerForm.status,
+            currentLocation: containerForm.currentLocation || null,
+            deliveryStatus: containerForm.deliveryStatus,
+          }),
         })
-        fetchShipment()
+        const json = await res.json()
+        if (!json.success) throw new Error(json.error || 'Failed to update container')
+      } else {
+        const res = await fetch(`/api/shipments/${selectedShipmentId}/containers`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...containerForm,
+            containerNumber: containerForm.containerNumber || `CTNR-${Date.now()}`,
+            grossWeight: containerForm.grossWeight ? parseFloat(containerForm.grossWeight) : null,
+            netWeight: containerForm.netWeight ? parseFloat(containerForm.netWeight) : null,
+            volume: null,
+            quantity,
+          }),
+        })
+        const json = await res.json()
+        if (!json.success) throw new Error(json.error || 'Failed to add container')
       }
+      setShowContainerForm(false)
+      setEditingContainer(null)
+      setContainerForm({
+        containerNumber: '', containerType: '20DC', containerSize: '20',
+        sealNumber: '', grossWeight: '', netWeight: '', volume: '1',
+        status: 'empty', currentLocation: '', deliveryStatus: 'pending',
+      })
+      fetchShipment(false)
     } catch (err) {
       console.error('Failed to add container:', err)
     } finally {
@@ -356,30 +434,51 @@ export function ShipmentDetail() {
     }
   }
 
+  const handleDeleteContainer = async (containerId: string) => {
+    if (!selectedShipmentId) return
+    try {
+      const res = await fetch(`/api/shipments/${selectedShipmentId}/containers/${containerId}`, { method: 'DELETE' })
+      const json = await res.json()
+      if (json.success) {
+        setDeletingItem(null)
+        fetchShipment(false)
+      }
+    } catch (err) {
+      console.error('Failed to delete container:', err)
+    }
+  }
+
   const handleAddExpense = async () => {
     if (!selectedShipmentId) return
     setExpenseSubmitting(true)
     try {
-      const res = await fetch(`/api/shipments/${selectedShipmentId}/expenses`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...expenseForm,
-          vendorId: expenseForm.vendorId || null,
-          exchangeRate: parseFloat(expenseForm.exchangeRate),
-          amount: parseFloat(expenseForm.amount),
-          tax: parseFloat(expenseForm.tax),
-        }),
-      })
+      const body = {
+        ...expenseForm,
+        vendorId: expenseForm.vendorId || null,
+        exchangeRate: parseFloat(expenseForm.exchangeRate),
+        amount: parseFloat(expenseForm.amount),
+        tax: parseFloat(expenseForm.tax),
+      }
+      const res = await fetch(
+        editingExpense
+          ? `/api/shipments/${selectedShipmentId}/expenses/${editingExpense.id}`
+          : `/api/shipments/${selectedShipmentId}/expenses`,
+        {
+          method: editingExpense ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }
+      )
       const json = await res.json()
       if (json.success) {
         setShowExpenseForm(false)
+        setEditingExpense(null)
         setExpenseForm({
-          expenseType: 'ocean_freight', vendorId: '', currency: 'USD',
+          expenseType: 'othc', vendorId: '', currency: 'USD',
           exchangeRate: '1', amount: '', tax: '0', paymentStatus: 'pending',
           invoiceNumber: '', notes: '',
         })
-        fetchShipment()
+        fetchShipment(false)
         fetchProfit()
       }
     } catch (err) {
@@ -389,37 +488,109 @@ export function ShipmentDetail() {
     }
   }
 
+  const handleDeleteExpense = async (expenseId: string) => {
+    if (!selectedShipmentId) return
+    try {
+      const res = await fetch(`/api/shipments/${selectedShipmentId}/expenses/${expenseId}`, { method: 'DELETE' })
+      const json = await res.json()
+      if (json.success) {
+        setDeletingItem(null)
+        fetchShipment(false)
+        fetchProfit()
+      }
+    } catch (err) {
+      console.error('Failed to delete expense:', err)
+    }
+  }
+
+  const toggleExpensePaymentStatus = async (expense: any) => {
+    if (!selectedShipmentId) return
+    const cycle: Record<string, string> = { pending: 'partial', partial: 'paid', paid: 'pending' }
+    const nextStatus = cycle[expense.paymentStatus] || 'pending'
+    try {
+      await fetch(`/api/shipments/${selectedShipmentId}/expenses/${expense.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentStatus: nextStatus }),
+      })
+      fetchShipment(false)
+      fetchProfit()
+    } catch (err) {
+      console.error('Failed to update payment status:', err)
+    }
+  }
+
   const handleAddRevenue = async () => {
     if (!selectedShipmentId) return
     setRevenueSubmitting(true)
     try {
-      const res = await fetch(`/api/shipments/${selectedShipmentId}/revenues`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...revenueForm,
-          customerId: revenueForm.customerId || null,
-          exchangeRate: parseFloat(revenueForm.exchangeRate),
-          amount: parseFloat(revenueForm.amount),
-          tax: parseFloat(revenueForm.tax),
-          dueDate: revenueForm.dueDate || null,
-        }),
-      })
+      const body = {
+        ...revenueForm,
+        customerId: revenueForm.customerId || null,
+        exchangeRate: parseFloat(revenueForm.exchangeRate),
+        amount: parseFloat(revenueForm.amount),
+        tax: parseFloat(revenueForm.tax),
+        dueDate: revenueForm.dueDate || null,
+      }
+      const res = await fetch(
+        editingRevenue
+          ? `/api/shipments/${selectedShipmentId}/revenues/${editingRevenue.id}`
+          : `/api/shipments/${selectedShipmentId}/revenues`,
+        {
+          method: editingRevenue ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }
+      )
       const json = await res.json()
       if (json.success) {
         setShowRevenueForm(false)
+        setEditingRevenue(null)
+        setContainerPrices({})
         setRevenueForm({
-          customerId: '', revenueType: 'freight_charges', invoiceNumber: '',
+          customerId: shipment?.customer?.id || '', revenueType: 'othc', invoiceNumber: '',
           currency: 'USD', exchangeRate: '1', amount: '', tax: '0',
           dueDate: '', paymentStatus: 'pending',
         })
-        fetchShipment()
+        fetchShipment(false)
         fetchProfit()
       }
     } catch (err) {
       console.error('Failed to add revenue:', err)
     } finally {
       setRevenueSubmitting(false)
+    }
+  }
+
+  const handleDeleteRevenue = async (revenueId: string) => {
+    if (!selectedShipmentId) return
+    try {
+      const res = await fetch(`/api/shipments/${selectedShipmentId}/revenues/${revenueId}`, { method: 'DELETE' })
+      const json = await res.json()
+      if (json.success) {
+        setDeletingItem(null)
+        fetchShipment(false)
+        fetchProfit()
+      }
+    } catch (err) {
+      console.error('Failed to delete revenue:', err)
+    }
+  }
+
+  const toggleRevenuePaymentStatus = async (revenue: any) => {
+    if (!selectedShipmentId) return
+    const cycle: Record<string, string> = { pending: 'partial', partial: 'paid', paid: 'overdue', overdue: 'pending' }
+    const nextStatus = cycle[revenue.paymentStatus] || 'pending'
+    try {
+      await fetch(`/api/shipments/${selectedShipmentId}/revenues/${revenue.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentStatus: nextStatus }),
+      })
+      fetchShipment(false)
+      fetchProfit()
+    } catch (err) {
+      console.error('Failed to update payment status:', err)
     }
   }
 
@@ -467,17 +638,13 @@ export function ShipmentDetail() {
   )
 
   const expenseTypeLabels: Record<string, string> = {
-    ocean_freight: 'Ocean Freight', dthc: 'DTHC', othc: 'OTHC', railways: 'Railways',
-    x_ray: 'X-Ray', inspection: 'Inspection', customs: 'Customs', fuel: 'Fuel',
-    toll: 'Toll', driver_expense: 'Driver Expense', port_charges: 'Port Charges',
-    handling_charges: 'Handling Charges', warehouse_charges: 'Warehouse Charges',
-    documentation: 'Documentation', agency_charges: 'Agency Charges', miscellaneous: 'Miscellaneous',
+    othc: 'OTHC', dthc: 'DTHC', x_ray: 'X-RAY', inspection: 'INSPECTION',
+    d_and_d: 'D&D', storage: 'STORAGE', doc: 'DOC', pick_up: 'PICK UP',
   }
 
   const revenueTypeLabels: Record<string, string> = {
-    freight_charges: 'Freight Charges', delivery_charges: 'Delivery Charges',
-    customs_charges: 'Customs Charges', documentation_fees: 'Documentation Fees',
-    handling_fees: 'Handling Fees', storage_charges: 'Storage Charges', other_charges: 'Other Charges',
+    othc: 'OTHC', dthc: 'DTHC', x_ray: 'X-RAY', inspection: 'INSPECTION',
+    d_and_d: 'D&D', storage: 'STORAGE', doc: 'DOC', pick_up: 'PICK UP',
   }
 
   const statusTimeline = ['draft', 'booked', 'loading', 'in_transit', 'arrived', 'customs_clearance', 'delivered']
@@ -596,7 +763,7 @@ export function ShipmentDetail() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Revenue</p>
-                    <p className="text-xl font-bold">{currencyFormatter.format(totalRevenues)}</p>
+                    <p className="text-xl font-bold">{formatCurrency(totalRevenues)}</p>
                   </div>
                 </div>
               </CardContent>
@@ -609,7 +776,7 @@ export function ShipmentDetail() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Expenses</p>
-                    <p className="text-xl font-bold">{currencyFormatter.format(totalExpenses)}</p>
+                    <p className="text-xl font-bold">{formatCurrency(totalExpenses)}</p>
                   </div>
                 </div>
               </CardContent>
@@ -623,7 +790,7 @@ export function ShipmentDetail() {
                   <div>
                     <p className="text-sm text-muted-foreground">Net Profit</p>
                     <p className={`text-xl font-bold ${totalRevenues - totalExpenses >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                      {currencyFormatter.format(totalRevenues - totalExpenses)}
+                      {formatCurrency(totalRevenues - totalExpenses)}
                     </p>
                   </div>
                 </div>
@@ -747,60 +914,158 @@ export function ShipmentDetail() {
               </CardContent>
             </Card>
           ) : (
-            <Card>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Container #</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Size</TableHead>
-                        <TableHead>Seal #</TableHead>
-                        <TableHead className="text-right">Gross Wt</TableHead>
-                        <TableHead className="text-right">Net Wt</TableHead>
-                        <TableHead className="text-right">Volume</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Location</TableHead>
-                        <TableHead>Delivery</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {shipment.containers.map((c) => (
-                        <TableRow key={c.id}>
-                          <TableCell className="font-medium">{c.containerNumber}</TableCell>
-                          <TableCell>{c.containerType}</TableCell>
-                          <TableCell>{c.containerSize}&apos;</TableCell>
-                          <TableCell>{c.sealNumber || '—'}</TableCell>
-                          <TableCell className="text-right">{c.grossWeight ? `${c.grossWeight} kg` : '—'}</TableCell>
-                          <TableCell className="text-right">{c.netWeight ? `${c.netWeight} kg` : '—'}</TableCell>
-                          <TableCell className="text-right">{c.volume ? `${c.volume} m³` : '—'}</TableCell>
-                          <TableCell>
-                            <Badge variant="secondary" className={containerStatusColors[c.status] || ''}>
-                              {c.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="max-w-[120px] truncate">{c.currentLocation || '—'}</TableCell>
-                          <TableCell>
-                            <Badge variant="secondary" className={deliveryStatusColors[c.deliveryStatus] || ''}>
-                              {c.deliveryStatus}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+            <>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  { key: 'empty', label: 'Empty', color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' },
+                  { key: 'loaded', label: 'Loaded', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' },
+                  { key: 'in_transit', label: 'In Transit', color: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-400' },
+                  { key: 'arrived', label: 'Arrived', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' },
+                  { key: 'delivered', label: 'Delivered', color: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400' },
+                ] as const).map(({ key, label, color }) => {
+                  const count = shipment.containers.reduce((s, c) => s + (c.status === key ? (c.quantity || 1) : 0), 0)
+                  if (count === 0) return null
+                  return (
+                    <div key={key} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${color}`}>
+                      {label}
+                      <span className="font-bold">{count}</span>
+                    </div>
+                  )
+                })}
+              </div>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {Object.entries(
+                      shipment.containers.reduce<Record<string, typeof shipment.containers>>((acc, c) => {
+                        ;(acc[c.containerType] ??= []).push(c)
+                        return acc
+                      }, {})
+                    ).map(([type, containers]) => (
+                    <Card key={type} className="border-emerald-200 dark:border-emerald-800">
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-semibold text-lg">{type}</h4>
+                          <span className="text-2xl font-bold text-emerald-600">{containers.reduce((s, c) => s + (c.quantity || 1), 0)}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
+                          {([
+                            { key: 'empty', label: 'Empty', color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' },
+                            { key: 'loaded', label: 'Loaded', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' },
+                            { key: 'in_transit', label: 'In Transit', color: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-400' },
+                            { key: 'arrived', label: 'Arrived', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' },
+                            { key: 'delivered', label: 'Delivered', color: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400' },
+                          ] as const).map(({ key, label, color }) => {
+                            const count = containers.reduce((s, c) => s + (c.status === key ? (c.quantity || 1) : 0), 0)
+                            if (count === 0) return null
+                            return (
+                              <div key={key} className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-medium ${color}`}>
+                                {label}
+                                <span className="font-bold">{count}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
               </CardContent>
             </Card>
+              <Card className="mt-4">
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Container #</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Size</TableHead>
+                          <TableHead className="text-right">Qty</TableHead>
+                          <TableHead>Seal #</TableHead>
+                          <TableHead className="text-right">Gross Wt</TableHead>
+                          <TableHead className="text-right">Net Wt</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Location</TableHead>
+                          <TableHead>Delivery</TableHead>
+                          <TableHead className="w-[80px]">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {shipment.containers.map((c) => (
+                          <TableRow key={c.id}>
+                            <TableCell className="font-medium">{c.containerNumber}</TableCell>
+                            <TableCell>{c.containerType}</TableCell>
+                            <TableCell>{c.containerSize}&apos;</TableCell>
+                            <TableCell className="text-right">{c.quantity || 1}</TableCell>
+                            <TableCell>{c.sealNumber || '—'}</TableCell>
+                            <TableCell className="text-right">{c.grossWeight ? `${c.grossWeight} kg` : '—'}</TableCell>
+                            <TableCell className="text-right">{c.netWeight ? `${c.netWeight} kg` : '—'}</TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className={containerStatusColors[c.status] || ''}>
+                                {c.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="max-w-[120px] truncate">{c.currentLocation || '—'}</TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className={deliveryStatusColors[c.deliveryStatus] || ''}>
+                                {c.deliveryStatus}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8"
+                                  onClick={() => {
+                                    setEditingContainer(c)
+                                    setContainerForm({
+                                      containerNumber: c.containerNumber,
+                                      containerType: c.containerType,
+                                      containerSize: c.containerSize,
+                                      sealNumber: c.sealNumber || '',
+                                      grossWeight: c.grossWeight?.toString() || '',
+                                      netWeight: c.netWeight?.toString() || '',
+                                      volume: c.quantity?.toString() || '1',
+                                      status: c.status,
+                                      currentLocation: c.currentLocation || '',
+                                      deliveryStatus: c.deliveryStatus,
+                                    })
+                                    setShowContainerForm(true)
+                                  }}
+                                >
+                                  <Pencil className="size-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8 text-red-500 hover:text-red-600"
+                                  onClick={() => setDeletingItem({ type: 'container', id: c.id })}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
           )}
 
           {/* Container Dialog */}
-          <Dialog open={showContainerForm} onOpenChange={setShowContainerForm}>
+          <Dialog open={showContainerForm} onOpenChange={(open) => {
+            setShowContainerForm(open)
+            if (!open) setEditingContainer(null)
+          }}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add Container</DialogTitle>
-                <DialogDescription>Add a new container to this shipment.</DialogDescription>
+                <DialogTitle>{editingContainer ? 'Edit Container' : 'Add Container'}</DialogTitle>
+                <DialogDescription>{editingContainer ? 'Update this container.' : 'Add a new container to this shipment.'}</DialogDescription>
               </DialogHeader>
               <div className="grid grid-cols-2 gap-4 py-4">
                 <div className="space-y-2">
@@ -849,8 +1114,8 @@ export function ShipmentDetail() {
                   <Input type="number" value={containerForm.netWeight} onChange={(e) => setContainerForm({ ...containerForm, netWeight: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Volume (m³)</Label>
-                  <Input type="number" value={containerForm.volume} onChange={(e) => setContainerForm({ ...containerForm, volume: e.target.value })} />
+                  <Label>Quantity</Label>
+                  <Input type="number" min="1" value={containerForm.volume} onChange={(e) => setContainerForm({ ...containerForm, volume: e.target.value })} />
                 </div>
                 <div className="space-y-2">
                   <Label>Status</Label>
@@ -887,7 +1152,7 @@ export function ShipmentDetail() {
                 <Button variant="outline" onClick={() => setShowContainerForm(false)}>Cancel</Button>
                 <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleAddContainer} disabled={containerSubmitting}>
                   {containerSubmitting && <Loader2 className="size-4 mr-2 animate-spin" />}
-                  Add Container
+                  {editingContainer ? 'Update Container' : 'Add Container'}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -935,6 +1200,7 @@ export function ShipmentDetail() {
                           <TableHead className="text-right">Total (Base)</TableHead>
                           <TableHead>Payment</TableHead>
                           <TableHead>Invoice #</TableHead>
+                          <TableHead className="w-[80px]">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -945,17 +1211,55 @@ export function ShipmentDetail() {
                             </TableCell>
                             <TableCell>{e.vendor?.name || '—'}</TableCell>
                             <TableCell>{e.currency}</TableCell>
-                            <TableCell className="text-right">{currencyFormatter.format(e.amount)}</TableCell>
-                            <TableCell className="text-right">{currencyFormatter.format(e.tax)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(e.amount)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(e.tax)}</TableCell>
                             <TableCell className="text-right font-medium">
-                              {currencyFormatter.format((e.amountBase || 0) + (e.taxBase || 0))}
+                              {formatCurrency((e.amountBase || 0) + (e.taxBase || 0))}
                             </TableCell>
                             <TableCell>
-                              <Badge variant="secondary" className={paymentStatusColors[e.paymentStatus] || ''}>
+                              <Badge
+                                variant="secondary"
+                                className={`cursor-pointer ${paymentStatusColors[e.paymentStatus] || ''}`}
+                                onClick={() => toggleExpensePaymentStatus(e)}
+                              >
                                 {e.paymentStatus}
                               </Badge>
                             </TableCell>
                             <TableCell>{e.invoiceNumber || '—'}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8"
+                                  onClick={() => {
+                                    setEditingExpense(e)
+                                    setExpenseForm({
+                                      expenseType: e.expenseType,
+                                      vendorId: e.vendor?.id || '',
+                                      currency: e.currency,
+                                      exchangeRate: e.exchangeRate.toString(),
+                                      amount: e.amount.toString(),
+                                      tax: e.tax.toString(),
+                                      paymentStatus: e.paymentStatus,
+                                      invoiceNumber: e.invoiceNumber || '',
+                                      notes: e.notes || '',
+                                    })
+                                    setShowExpenseForm(true)
+                                  }}
+                                >
+                                  <Pencil className="size-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8 text-red-500 hover:text-red-600"
+                                  onClick={() => setDeletingItem({ type: 'expense', id: e.id })}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </div>
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -968,7 +1272,7 @@ export function ShipmentDetail() {
                   <CardContent className="p-4 space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Total Expenses (Base)</span>
-                      <span className="font-bold">{currencyFormatter.format(totalExpenses)}</span>
+                      <span className="font-bold">{formatCurrency(totalExpenses)}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -977,23 +1281,23 @@ export function ShipmentDetail() {
           )}
 
           {/* Expense Dialog */}
-          <Dialog open={showExpenseForm} onOpenChange={setShowExpenseForm}>
+          <Dialog open={showExpenseForm} onOpenChange={(open) => {
+            setShowExpenseForm(open)
+            if (!open) setEditingExpense(null)
+          }}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add Expense</DialogTitle>
-                <DialogDescription>Record a new expense for this shipment.</DialogDescription>
+                <DialogTitle>{editingExpense ? 'Edit Expense' : 'Add Expense'}</DialogTitle>
+                <DialogDescription>{editingExpense ? 'Update this expense.' : 'Record a new expense for this shipment.'}</DialogDescription>
               </DialogHeader>
               <div className="grid grid-cols-2 gap-4 py-4">
                 <div className="space-y-2 col-span-2">
                   <Label>Expense Type *</Label>
-                  <Select value={expenseForm.expenseType} onValueChange={(v) => setExpenseForm({ ...expenseForm, expenseType: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(expenseTypeLabels).map(([key, label]) => (
-                        <SelectItem key={key} value={key}>{label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <ChargeTypeCombobox
+                    type="expense"
+                    value={expenseForm.expenseType}
+                    onValueChange={(v) => setExpenseForm({ ...expenseForm, expenseType: v })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Vendor</Label>
@@ -1012,10 +1316,9 @@ export function ShipmentDetail() {
                   <Select value={expenseForm.currency} onValueChange={(v) => setExpenseForm({ ...expenseForm, currency: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="USD">USD</SelectItem>
-                      <SelectItem value="EUR">EUR</SelectItem>
-                      <SelectItem value="GBP">GBP</SelectItem>
-                      <SelectItem value="CNY">CNY</SelectItem>
+                      {currencies.map((c) => (
+                        <SelectItem key={c.code} value={c.code}>{c.code}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1055,7 +1358,7 @@ export function ShipmentDetail() {
                 <Button variant="outline" onClick={() => setShowExpenseForm(false)}>Cancel</Button>
                 <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleAddExpense} disabled={expenseSubmitting}>
                   {expenseSubmitting && <Loader2 className="size-4 mr-2 animate-spin" />}
-                  Add Expense
+                  {editingExpense ? 'Update Expense' : 'Add Expense'}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -1069,7 +1372,10 @@ export function ShipmentDetail() {
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
               size="sm"
-              onClick={() => setShowRevenueForm(true)}
+              onClick={() => {
+                setRevenueForm((prev) => ({ ...prev, customerId: shipment?.customer?.id || '' }))
+                setShowRevenueForm(true)
+              }}
             >
               <Plus className="size-4 mr-2" />
               Add Revenue
@@ -1081,7 +1387,10 @@ export function ShipmentDetail() {
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <TrendingUp className="size-10 text-muted-foreground/50 mb-3" />
                 <p className="text-muted-foreground">No revenue recorded yet</p>
-                <Button variant="outline" size="sm" className="mt-3" onClick={() => setShowRevenueForm(true)}>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => {
+                  setRevenueForm((prev) => ({ ...prev, customerId: shipment?.customer?.id || '' }))
+                  setShowRevenueForm(true)
+                }}>
                   <Plus className="size-4 mr-2" />
                   Add Revenue
                 </Button>
@@ -1104,6 +1413,7 @@ export function ShipmentDetail() {
                           <TableHead className="text-right">Total (Base)</TableHead>
                           <TableHead>Payment</TableHead>
                           <TableHead>Due Date</TableHead>
+                          <TableHead className="w-[80px]">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1113,17 +1423,55 @@ export function ShipmentDetail() {
                             <TableCell>{revenueTypeLabels[r.revenueType] || r.revenueType}</TableCell>
                             <TableCell>{r.invoiceNumber || '—'}</TableCell>
                             <TableCell>{r.currency}</TableCell>
-                            <TableCell className="text-right">{currencyFormatter.format(r.amount)}</TableCell>
-                            <TableCell className="text-right">{currencyFormatter.format(r.tax)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(r.amount)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(r.tax)}</TableCell>
                             <TableCell className="text-right font-medium">
-                              {currencyFormatter.format((r.amountBase || 0) + (r.taxBase || 0))}
+                              {formatCurrency((r.amountBase || 0) + (r.taxBase || 0))}
                             </TableCell>
                             <TableCell>
-                              <Badge variant="secondary" className={paymentStatusColors[r.paymentStatus] || ''}>
+                              <Badge
+                                variant="secondary"
+                                className={`cursor-pointer ${paymentStatusColors[r.paymentStatus] || ''}`}
+                                onClick={() => toggleRevenuePaymentStatus(r)}
+                              >
                                 {r.paymentStatus}
                               </Badge>
                             </TableCell>
                             <TableCell>{r.dueDate ? format(new Date(r.dueDate), 'MMM dd') : '—'}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8"
+                                  onClick={() => {
+                                    setEditingRevenue(r)
+                                    setRevenueForm({
+                                      customerId: r.customer?.id || '',
+                                      revenueType: r.revenueType,
+                                      invoiceNumber: r.invoiceNumber || '',
+                                      currency: r.currency,
+                                      exchangeRate: r.exchangeRate.toString(),
+                                      amount: r.amount.toString(),
+                                      tax: r.tax.toString(),
+                                      dueDate: r.dueDate ? format(new Date(r.dueDate), 'yyyy-MM-dd') : '',
+                                      paymentStatus: r.paymentStatus,
+                                    })
+                                    setShowRevenueForm(true)
+                                  }}
+                                >
+                                  <Pencil className="size-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8 text-red-500 hover:text-red-600"
+                                  onClick={() => setDeletingItem({ type: 'revenue', id: r.id })}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </div>
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -1136,7 +1484,7 @@ export function ShipmentDetail() {
                   <CardContent className="p-4 space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Total Revenue (Base)</span>
-                      <span className="font-bold">{currencyFormatter.format(totalRevenues)}</span>
+                      <span className="font-bold">{formatCurrency(totalRevenues)}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -1145,35 +1493,154 @@ export function ShipmentDetail() {
           )}
 
           {/* Revenue Dialog */}
-          <Dialog open={showRevenueForm} onOpenChange={setShowRevenueForm}>
+          <Dialog open={showRevenueForm} onOpenChange={(open) => {
+            setShowRevenueForm(open)
+            if (!open) setEditingRevenue(null)
+            if (open && !editingRevenue) {
+              setRevenueForm((prev) => ({ ...prev, customerId: shipment?.customer?.id || '' }))
+              const groups: Record<string, number> = {}
+              for (const c of shipment?.containers || []) {
+                const key = `${c.containerType}|${c.status}`
+                groups[key] = (groups[key] || 0) + (c.quantity || 1)
+              }
+              const prices: Record<string, string> = {}
+              for (const key of Object.keys(groups)) {
+                prices[key] = ''
+              }
+              setContainerPrices(prices)
+            }
+          }}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add Revenue</DialogTitle>
-                <DialogDescription>Record a new revenue for this shipment.</DialogDescription>
+                <DialogTitle>{editingRevenue ? 'Edit Revenue' : 'Add Revenue'}</DialogTitle>
+                <DialogDescription>{editingRevenue ? 'Update this revenue.' : 'Record a new revenue for this shipment.'}</DialogDescription>
               </DialogHeader>
+              {showRevenueForm && shipment && shipment.containers.length > 0 && (
+                <div className="border rounded-lg p-4 mb-4 space-y-3">
+                  <h4 className="text-sm font-semibold">Container Pricing</h4>
+                  {Object.entries(
+                    shipment.containers.reduce((acc, c) => {
+                      const key = `${c.containerType}|${c.status}`
+                      acc[key] = (acc[key] || 0) + (c.quantity || 1)
+                      return acc
+                    }, {} as Record<string, number>)
+                  ).map(([key, qty]) => {
+                    const [type, status] = key.split('|')
+                    const price = parseFloat(containerPrices[key] || '0') || 0
+                    const subtotal = qty * price
+                    return (
+                      <div key={key} className="grid grid-cols-[1fr_auto_auto_1fr_auto] gap-2 items-center">
+                        <span className="text-sm font-medium">{type}</span>
+                        <Badge variant="secondary" className={`text-xs ${containerStatusColors[status] || ''}`}>
+                          {status}
+                        </Badge>
+                        <span className="text-sm text-muted-foreground">×{qty}</span>
+                        <Input
+                          type="number"
+                          placeholder="Price"
+                          value={containerPrices[key] || ''}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            const newPrices = { ...containerPrices, [key]: v }
+                            setContainerPrices(newPrices)
+                            const groups = shipment.containers.reduce((acc, c) => {
+                              const k = `${c.containerType}|${c.status}`
+                              acc[k] = (acc[k] || 0) + (c.quantity || 1)
+                              return acc
+                            }, {} as Record<string, number>)
+                            const total = Object.entries(newPrices).reduce((sum, [k, p]) => {
+                              return sum + (groups[k] || 0) * (parseFloat(p || '0') || 0)
+                            }, 0)
+                            setRevenueForm((prev) => ({ ...prev, amount: total ? total.toString() : '' }))
+                          }}
+                        />
+                        <span className="text-sm text-right font-medium tabular-nums">
+                          {formatCurrency(subtotal)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                  <div className="flex justify-end pt-2 border-t">
+                    <span className="text-sm font-semibold tabular-nums">
+                      Total: {formatCurrency(
+                        Object.entries(containerPrices).reduce((sum, [key, price]) => {
+                          const qty = shipment.containers.reduce((s, c) => s + (`${c.containerType}|${c.status}` === key ? (c.quantity || 1) : 0), 0)
+                          return sum + qty * (parseFloat(price || '0') || 0)
+                        }, 0)
+                      )}
+                    </span>
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4 py-4">
                 <div className="space-y-2">
                   <Label>Customer</Label>
-                  <Select value={revenueForm.customerId} onValueChange={(v) => setRevenueForm({ ...revenueForm, customerId: v === '_none' ? '' : v })}>
-                    <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_none">No Customer</SelectItem>
-                      {customers.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={customerPopoverOpen} onOpenChange={setCustomerPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={customerPopoverOpen}
+                        className="w-full justify-between font-normal"
+                      >
+                        {revenueForm.customerId
+                          ? customers.find((c) => c.id === revenueForm.customerId)?.name || 'Select customer'
+                          : 'Select customer'}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] max-h-[300px] overflow-y-auto p-0">
+                      <Command>
+                        <CommandInput placeholder="Search customers..." />
+                        <CommandList className="max-h-[260px]">
+                          <CommandEmpty>No customers found.</CommandEmpty>
+                          <CommandGroup>
+                            <CommandItem
+                              value="_none"
+                              onSelect={() => {
+                                setRevenueForm({ ...revenueForm, customerId: '' })
+                                setCustomerPopoverOpen(false)
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  'mr-2 h-4 w-4',
+                                  !revenueForm.customerId ? 'opacity-100' : 'opacity-0'
+                                )}
+                              />
+                              No Customer
+                            </CommandItem>
+                            {customers.map((c) => (
+                              <CommandItem
+                                key={c.id}
+                                value={`${c.name} ${c.code}`}
+                                onSelect={() => {
+                                  setRevenueForm({ ...revenueForm, customerId: c.id })
+                                  setCustomerPopoverOpen(false)
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    'mr-2 h-4 w-4',
+                                    revenueForm.customerId === c.id ? 'opacity-100' : 'opacity-0'
+                                  )}
+                                />
+                                {c.name} ({c.code})
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <div className="space-y-2">
                   <Label>Revenue Type *</Label>
-                  <Select value={revenueForm.revenueType} onValueChange={(v) => setRevenueForm({ ...revenueForm, revenueType: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(revenueTypeLabels).map(([key, label]) => (
-                        <SelectItem key={key} value={key}>{label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <ChargeTypeCombobox
+                    type="revenue"
+                    value={revenueForm.revenueType}
+                    onValueChange={(v) => setRevenueForm({ ...revenueForm, revenueType: v })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Invoice Number</Label>
@@ -1184,10 +1651,9 @@ export function ShipmentDetail() {
                   <Select value={revenueForm.currency} onValueChange={(v) => setRevenueForm({ ...revenueForm, currency: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="USD">USD</SelectItem>
-                      <SelectItem value="EUR">EUR</SelectItem>
-                      <SelectItem value="GBP">GBP</SelectItem>
-                      <SelectItem value="CNY">CNY</SelectItem>
+                      {currencies.map((c) => (
+                        <SelectItem key={c.code} value={c.code}>{c.code}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1197,7 +1663,7 @@ export function ShipmentDetail() {
                 </div>
                 <div className="space-y-2">
                   <Label>Amount *</Label>
-                  <Input type="number" value={revenueForm.amount} onChange={(e) => setRevenueForm({ ...revenueForm, amount: e.target.value })} />
+                  <Input type="number" readOnly value={revenueForm.amount} className="bg-muted" />
                 </div>
                 <div className="space-y-2">
                   <Label>Tax</Label>
@@ -1224,7 +1690,7 @@ export function ShipmentDetail() {
                 <Button variant="outline" onClick={() => setShowRevenueForm(false)}>Cancel</Button>
                 <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleAddRevenue} disabled={revenueSubmitting}>
                   {revenueSubmitting && <Loader2 className="size-4 mr-2 animate-spin" />}
-                  Add Revenue
+                  {editingRevenue ? 'Update Revenue' : 'Add Revenue'}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -1240,20 +1706,20 @@ export function ShipmentDetail() {
                 <Card>
                   <CardContent className="p-4">
                     <p className="text-sm text-muted-foreground">Gross Revenue</p>
-                    <p className="text-2xl font-bold text-emerald-600">{currencyFormatter.format(profitData.grossRevenue)}</p>
+                    <p className="text-2xl font-bold text-emerald-600">{formatCurrency(profitData.grossRevenue)}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-4">
                     <p className="text-sm text-muted-foreground">Total Expenses</p>
-                    <p className="text-2xl font-bold text-red-600">{currencyFormatter.format(profitData.totalExpense)}</p>
+                    <p className="text-2xl font-bold text-red-600">{formatCurrency(profitData.totalExpense)}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-4">
                     <p className="text-sm text-muted-foreground">Net Profit</p>
                     <p className={`text-2xl font-bold ${profitData.netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                      {currencyFormatter.format(profitData.netProfit)}
+                      {formatCurrency(profitData.netProfit)}
                     </p>
                   </CardContent>
                 </Card>
@@ -1280,7 +1746,7 @@ export function ShipmentDetail() {
                           <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                           <XAxis dataKey="containerNumber" tick={{ fontSize: 10 }} />
                           <YAxis tick={{ fontSize: 10 }} />
-                          <Tooltip formatter={(value: number) => currencyFormatter.format(value)} />
+                          <Tooltip formatter={(value: number) => formatCurrency(value)} />
                           <Bar dataKey="revenue" name="Revenue" fill="#10b981" />
                           <Bar dataKey="expense" name="Expense" fill="#ef4444" />
                           <Bar dataKey="profit" name="Profit" fill="#14b8a6" />
@@ -1301,7 +1767,7 @@ export function ShipmentDetail() {
                           <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                           <XAxis dataKey="customerName" tick={{ fontSize: 10 }} />
                           <YAxis tick={{ fontSize: 10 }} />
-                          <Tooltip formatter={(value: number) => currencyFormatter.format(value)} />
+                          <Tooltip formatter={(value: number) => formatCurrency(value)} />
                           <Bar dataKey="revenue" name="Revenue" fill="#10b981" />
                         </BarChart>
                       </ResponsiveContainer>
@@ -1333,7 +1799,7 @@ export function ShipmentDetail() {
                               <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(value: number) => currencyFormatter.format(value)} />
+                          <Tooltip formatter={(value: number) => formatCurrency(value)} />
                         </PieChart>
                       </ResponsiveContainer>
                     </CardContent>
@@ -1351,7 +1817,7 @@ export function ShipmentDetail() {
                           <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                           <XAxis dataKey="route" tick={{ fontSize: 10 }} />
                           <YAxis tick={{ fontSize: 10 }} />
-                          <Tooltip formatter={(value: number) => currencyFormatter.format(value)} />
+                          <Tooltip formatter={(value: number) => formatCurrency(value)} />
                           <Bar dataKey="revenue" name="Revenue" fill="#10b981" />
                           <Bar dataKey="expense" name="Expense" fill="#ef4444" />
                           <Bar dataKey="profit" name="Profit" fill="#14b8a6" />
@@ -1398,6 +1864,32 @@ export function ShipmentDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Item Confirmation */}
+      <AlertDialog open={!!deletingItem} onOpenChange={(open) => { if (!open) setDeletingItem(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deletingItem?.type}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this {deletingItem?.type}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => {
+                if (!deletingItem) return
+                if (deletingItem.type === 'container') handleDeleteContainer(deletingItem.id)
+                else if (deletingItem.type === 'expense') handleDeleteExpense(deletingItem.id)
+                else if (deletingItem.type === 'revenue') handleDeleteRevenue(deletingItem.id)
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
