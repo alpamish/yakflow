@@ -244,6 +244,7 @@ export function VoyageDetail() {
   const [loading, setLoading] = useState(true)
   const [showEdit, setShowEdit] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
 
   // TEU form
   const [showTeuForm, setShowTeuForm] = useState(false)
@@ -646,7 +647,26 @@ export function VoyageDetail() {
 
   const status = statusConfig[voyage.status] || statusConfig.planned
   const currentStep = status.step >= 0 ? status.step : 0
+  const stepKeys = ['planned', 'loading', 'departed', 'in_transit', 'arrived', 'completed'] as const
   const latestTeu = voyage.teuRecords.length > 0 ? voyage.teuRecords[0] : null
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (!selectedVoyageId || newStatus === voyage.status) return
+    setUpdatingStatus(newStatus)
+    try {
+      const res = await fetch(`/api/voyages/${selectedVoyageId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      const json = await res.json()
+      if (json.success) fetchVoyage()
+    } catch (e) {
+      console.error('Failed to update status', e)
+    } finally {
+      setUpdatingStatus(null)
+    }
+  }
   const totalRevenue = voyage.revenues.reduce((s, r) => s + (r.amount || 0), 0)
   const totalExpenses = voyage.expenses.reduce((s, e) => s + (e.amount || 0), 0)
 
@@ -834,20 +854,29 @@ export function VoyageDetail() {
                 <div className="flex items-center gap-1 overflow-x-auto pb-2">
                   {statusSteps.map((step, i) => (
                     <React.Fragment key={step}>
-                      <div className="flex flex-col items-center min-w-[70px]">
-                        <div className={`size-8 rounded-full flex items-center justify-center text-xs font-semibold ${
+                      <button
+                        type="button"
+                        disabled={updatingStatus !== null}
+                        onClick={() => handleStatusChange(stepKeys[i])}
+                        className="flex flex-col items-center min-w-[70px] group"
+                      >
+                        <div className={`size-8 rounded-full flex items-center justify-center text-xs font-semibold transition-all ${
                           i <= currentStep
                             ? 'bg-amber-500 text-white'
                             : 'bg-muted text-muted-foreground'
-                        }`}>
-                          {i + 1}
+                        } group-hover:ring-2 group-hover:ring-amber-400 group-focus-visible:ring-2 group-focus-visible:ring-amber-400 cursor-pointer`}>
+                          {updatingStatus === stepKeys[i] ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            i + 1
+                          )}
                         </div>
                         <span className={`text-xs mt-1 ${
                           i <= currentStep ? 'text-amber-600 font-medium' : 'text-muted-foreground'
                         }`}>
                           {step}
                         </span>
-                      </div>
+                      </button>
                       {i < statusSteps.length - 1 && (
                         <div className={`h-0.5 w-8 flex-shrink-0 ${
                           i < currentStep ? 'bg-amber-500' : 'bg-muted'
@@ -855,6 +884,23 @@ export function VoyageDetail() {
                       )}
                     </React.Fragment>
                   ))}
+                  <div className="ml-4 pl-4 border-l border-border">
+                    <button
+                      type="button"
+                      disabled={updatingStatus !== null}
+                      onClick={() => handleStatusChange('cancelled')}
+                      className="flex flex-col items-center min-w-[70px] group"
+                    >
+                      <div className="size-8 rounded-full flex items-center justify-center text-xs font-semibold bg-red-100 text-red-600 group-hover:ring-2 group-hover:ring-red-400 group-focus-visible:ring-2 group-focus-visible:ring-red-400 cursor-pointer transition-all">
+                        {updatingStatus === 'cancelled' ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          '✕'
+                        )}
+                      </div>
+                      <span className="text-xs mt-1 text-red-500">Cancel</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </CardContent>

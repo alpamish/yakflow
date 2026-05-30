@@ -57,23 +57,14 @@ export async function POST(
       )
     }
 
-    const exchangeRate = body.exchangeRate || 1
-    const amount = body.amount
-    const tax = body.tax || 0
-    const amountBase = amount * exchangeRate
-    const taxBase = tax * exchangeRate
-
     const expense = await db.shipmentExpense.create({
       data: {
         shipmentId: id,
         expenseType: body.expenseType,
         vendorId: body.vendorId || null,
-        currency: body.currency || 'USD',
-        exchangeRate,
-        amount,
-        tax,
-        amountBase,
-        taxBase,
+        quantity: body.quantity ?? 1,
+        unitPrice: body.unitPrice ?? 0,
+        amount: body.amount,
         paymentStatus: body.paymentStatus || 'pending',
         invoiceNumber: body.invoiceNumber || null,
         notes: body.notes || null,

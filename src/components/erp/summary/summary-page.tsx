@@ -53,7 +53,7 @@ interface SummaryData {
     totalPaymentAmount: number
     accountsReceivable: number
     accountsPayable: number
-    byCurrency: Record<string, number>
+    byCurrency: Record<string, { count: number; totalAmount: number; totalBase: number }>
   }
   containerSummary: {
     totalContainers: number
@@ -284,11 +284,10 @@ export function SummaryPage() {
       </div>
 
       {/* KPI Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-px bg-border rounded-lg overflow-hidden">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-px bg-border rounded-lg overflow-hidden">
         {[
           { label: 'Total Revenue', value: fmt(totalRevenue), color: 'text-emerald-600' },
           { label: 'Total Expenses', value: fmt(totalExpenses), color: 'text-red-600' },
-          { label: 'Net Profit', value: fmt(totalProfit), color: totalProfit >= 0 ? 'text-emerald-600' : 'text-red-600' },
           { label: 'Shipments', value: String(data.shipmentSummary.totalShipments) },
           { label: 'Voyages', value: String(data.voyageSummary.totalVoyages) },
           { label: 'Containers', value: String(data.containerSummary.totalContainers) },
@@ -312,11 +311,10 @@ export function SummaryPage() {
             <table className={S.table}>
               <thead>
                 <tr>
-                  <th className={S.header} style={{width: "30%"}}>Category</th>
-                  <th className={S.header} style={{width: "18%"}}>Shipment Ops</th>
-                  <th className={S.header} style={{width: "18%"}}>Voyage Finance</th>
-                  <th className={S.header} style={{width: "18%"}}>Combined Total</th>
-                  <th className={S.header} style={{width: "16%"}}>% Share</th>
+                  <th className={S.header} style={{width: "34%"}}>Category</th>
+                  <th className={S.header} style={{width: "22%"}}>Shipment Ops</th>
+                  <th className={S.header} style={{width: "22%"}}>Voyage Finance</th>
+                  <th className={S.header} style={{width: "22%"}}>Combined Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -325,28 +323,24 @@ export function SummaryPage() {
                   <td className={S.cellR}>{fmt(data.shipmentSummary.totalRevenue)}</td>
                   <td className={S.cellR}>{fmt(data.voyageSummary.totalRevenue)}</td>
                   <td className={S.cellBR}>{fmt(totalRevenue)}</td>
-                  <td className={S.cellR}>100%</td>
                 </tr>
                 <tr className={S.evenRow}>
                   <td className={S.cellB}><span className="inline-block size-2.5 rounded-full bg-red-500 mr-2" />Total Expenses</td>
                   <td className={S.cellR}>{fmt(data.shipmentSummary.totalExpenses)}</td>
                   <td className={S.cellR}>{fmt(data.voyageSummary.totalExpenses)}</td>
                   <td className={S.cellBR}>{fmt(totalExpenses)}</td>
-                  <td className={S.cellR}>{pct(totalExpenses, totalRevenue)}</td>
                 </tr>
                 <tr className={S.totalRow}>
                   <td className={S.totalCell}><span className="inline-block size-2.5 rounded-full bg-teal-600 mr-2" />Net Profit</td>
                   <td className={S.totalCellR}>{fmt(data.shipmentSummary.netProfit)}</td>
                   <td className={S.totalCellR}>{fmt(data.voyageSummary.netProfit)}</td>
                   <td className={S.totalCellR}>{fmt(totalProfit)}</td>
-                  <td className={S.totalCellR}>{pct(totalProfit, totalRevenue)}</td>
                 </tr>
                 <tr>
                   <td className={S.cell}><span className="text-muted-foreground">Profit Margin</span></td>
                   <td className={S.cellR}>{data.shipmentSummary.totalRevenue > 0 ? ((data.shipmentSummary.netProfit / data.shipmentSummary.totalRevenue) * 100).toFixed(1) + '%' : '--'}</td>
                   <td className={S.cellR}>{data.voyageSummary.totalRevenue > 0 ? ((data.voyageSummary.netProfit / data.voyageSummary.totalRevenue) * 100).toFixed(1) + '%' : '--'}</td>
                   <td className={S.cellBR}>{totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) + '%' : '--'}</td>
-                  <td className={S.cellR}>--</td>
                 </tr>
               </tbody>
             </table>
@@ -368,7 +362,6 @@ export function SummaryPage() {
                 <tbody>
                   <tr><td className={S.subHeader} colSpan={2}>Overview</td></tr>
                   <tr><td className={S.cell}>Total Shipments</td><td className={S.cellR}>{data.shipmentSummary.totalShipments}</td></tr>
-                  <tr className={S.evenRow}><td className={S.cell}>Total Containers</td><td className={S.cellR}>{data.shipmentSummary.totalContainers}</td></tr>
                   <tr><td className={S.subHeader} colSpan={2}>By Status</td></tr>
                   {Object.entries(data.shipmentSummary.byStatus).map(([k, v], i) => (
                     <tr key={k} className={i % 2 === 1 ? S.evenRow : undefined}><td className={S.cell}>{STATUS_LABELS[k] || k}</td><td className={S.cellR}>{v}</td></tr>
@@ -427,8 +420,7 @@ export function SummaryPage() {
             <table className={S.table}>
               <thead>
                 <tr>
-                  <th className={S.header} style={{width: "5%"}}>No.</th>
-                  <th className={S.header} style={{width: "35%"}}>Expense Type</th>
+                  <th className={S.header} style={{width: "40%"}}>Expense Type</th>
                   <th className={S.header} style={{width: "25%"}}>{curLabel}</th>
                   <th className={S.header} style={{width: "20%"}}>% of Total</th>
                   <th className={S.header} style={{width: "15%"}}>Bar</th>
@@ -440,7 +432,6 @@ export function SummaryPage() {
                   const barPct = grandTotal > 0 ? (item.total / grandTotal) * 100 : 0
                   return (
                     <tr key={i} className={i % 2 === 1 ? S.evenRow : undefined}>
-                      <td className={S.cell + ' text-muted-foreground'}>{i + 1}</td>
                       <td className={S.cell}>
                         <span className="inline-block size-2.5 rounded-full mr-2" style={{backgroundColor: 'hsl(' + ((i * 37 + 15) % 360) + ', 65%, 50%)'}} />
                         {EXPENSE_LABELS[item.type] || item.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
@@ -456,7 +447,6 @@ export function SummaryPage() {
                   )
                 })}
                 <tr className={S.totalRow}>
-                  <td className={S.totalCell}></td>
                   <td className={S.totalCell}>TOTAL EXPENSES</td>
                   <td className={S.totalCellR}>{fmt(data.expenseBreakdown.reduce((s, e) => s + e.total, 0))}</td>
                   <td className={S.totalCellR}>100%</td>
@@ -478,8 +468,7 @@ export function SummaryPage() {
             <table className={S.table}>
               <thead>
                 <tr>
-                  <th className={S.header} style={{width: "5%"}}>No.</th>
-                  <th className={S.header} style={{width: "35%"}}>Revenue Type</th>
+                  <th className={S.header} style={{width: "40%"}}>Revenue Type</th>
                   <th className={S.header} style={{width: "25%"}}>{curLabel}</th>
                   <th className={S.header} style={{width: "20%"}}>% of Total</th>
                   <th className={S.header} style={{width: "15%"}}>Bar</th>
@@ -491,7 +480,6 @@ export function SummaryPage() {
                   const barPct = grandTotal > 0 ? (item.total / grandTotal) * 100 : 0
                   return (
                     <tr key={i} className={i % 2 === 1 ? S.evenRow : undefined}>
-                      <td className={S.cell + ' text-muted-foreground'}>{i + 1}</td>
                       <td className={S.cell}>
                         <span className="inline-block size-2.5 rounded-full mr-2" style={{backgroundColor: 'hsl(' + ((i * 47 + 140) % 360) + ', 65%, 50%)'}} />
                         {REVENUE_LABELS[item.type] || item.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
@@ -507,7 +495,6 @@ export function SummaryPage() {
                   )
                 })}
                 <tr className={S.totalRow}>
-                  <td className={S.totalCell}></td>
                   <td className={S.totalCell}>TOTAL REVENUE</td>
                   <td className={S.totalCellR}>{fmt(data.revenueBreakdown.reduce((s, r) => s + r.total, 0))}</td>
                   <td className={S.totalCellR}>100%</td>
@@ -559,21 +546,27 @@ export function SummaryPage() {
                 <tbody>
                   <tr><td className={S.subHeader} colSpan={2}>Invoices</td></tr>
                   <tr><td className={S.cell}>Total Invoices</td><td className={S.cellR}>{data.financialSummary.totalInvoices}</td></tr>
-                  <tr className={S.evenRow}><td className={S.cell}>Total Invoice Amount</td><td className={S.cellR}>{fmt(data.financialSummary.totalInvoiceAmount)}</td></tr>
-                  {Object.entries(data.financialSummary.byStatus).length > 0 && (
-                    <>
-                      <tr><td className={S.subHeader} colSpan={2}>Invoice Status</td></tr>
-                      {Object.entries(data.financialSummary.byStatus).map(([k, v], i) => (
-                        <tr key={k} className={i % 2 === 1 ? S.evenRow : undefined}><td className={S.cell}>{STATUS_LABELS[k] || k}</td><td className={S.cellR}>{v}</td></tr>
-                      ))}
-                    </>
-                  )}
+                  <tr className={S.evenRow}><td className={S.cell}>Subtotal</td><td className={S.cellR}>{fmt(data.financialSummary.totalSubtotal)}</td></tr>
+                  <tr><td className={S.cell}>Tax</td><td className={S.cellR}>{fmt(data.financialSummary.totalTax)}</td></tr>
+                  <tr className={S.totalRow}><td className={S.totalCell}>Total Invoice Amount</td><td className={S.totalCellR}>{fmt(data.financialSummary.totalInvoiceAmount)}</td></tr>
                   <tr><td className={S.subHeader} colSpan={2}>Payments</td></tr>
                   <tr><td className={S.cell}>Total Payments</td><td className={S.cellR}>{data.financialSummary.totalPayments}</td></tr>
                   <tr className={S.evenRow}><td className={S.cell}>Total Payment Amount</td><td className={S.cellR}>{fmt(data.financialSummary.totalPaymentAmount)}</td></tr>
                   <tr><td className={S.subHeader} colSpan={2}>Balances</td></tr>
                   <tr><td className={S.cell}><span className="inline-block size-2.5 rounded-full bg-emerald-500 mr-2" />Accounts Receivable</td><td className={S.cellR}>{fmt(data.financialSummary.accountsReceivable)}</td></tr>
                   <tr className={S.evenRow}><td className={S.cell}><span className="inline-block size-2.5 rounded-full bg-red-500 mr-2" />Accounts Payable</td><td className={S.cellR}>{fmt(data.financialSummary.accountsPayable)}</td></tr>
+                  <tr className={S.totalRow}><td className={S.totalCell}>Net Receivable</td><td className={S.totalCellR + (data.financialSummary.accountsReceivable - data.financialSummary.accountsPayable >= 0 ? ' text-emerald-600' : ' text-red-600')}>{fmt(data.financialSummary.accountsReceivable - data.financialSummary.accountsPayable)}</td></tr>
+                  {Object.entries(data.financialSummary.byCurrency).length > 0 && (
+                    <>
+                      <tr><td className={S.subHeader} colSpan={2}>Currency Breakdown</td></tr>
+                      {Object.entries(data.financialSummary.byCurrency).map(([code, info], i) => (
+                        <tr key={code} className={i % 2 === 1 ? S.evenRow : undefined}>
+                          <td className={S.cell}><span className="font-semibold">{code}</span> &mdash; {info.count} invoice{info.count !== 1 ? 's' : ''}</td>
+                          <td className={S.cellR}>{getCurrencySymbol(code)}{info.totalAmount.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                        </tr>
+                      ))}
+                    </>
+                  )}
                 </tbody>
               </table>
             </div>

@@ -26,8 +26,8 @@ export async function GET() {
       db.shipment.groupBy({ by: ['direction'], _count: { direction: true } }),
       db.shipment.groupBy({ by: ['transportMode'], _count: { transportMode: true } }),
       db.container.count(),
-      db.shipmentRevenue.aggregate({ _sum: { amountBase: true } }),
-      db.shipmentExpense.aggregate({ _sum: { amountBase: true, taxBase: true } }),
+      db.shipmentRevenue.aggregate({ _sum: { amount: true } }),
+      db.shipmentExpense.aggregate({ _sum: { amount: true } }),
       db.shipment.findMany({ select: { id: true, createdAt: true } }),
     ])
 
@@ -46,9 +46,9 @@ export async function GET() {
       shipmentTransportModeBreakdown[row.transportMode] = row._count.transportMode
     }
 
-    const totalShipmentRevenue = Math.round(shipmentRevenueAgg._sum.amountBase ?? 0)
+    const totalShipmentRevenue = Math.round(shipmentRevenueAgg._sum.amount ?? 0)
     const totalShipmentExpense = Math.round(
-      (shipmentExpenseAgg._sum.amountBase ?? 0) + (shipmentExpenseAgg._sum.taxBase ?? 0)
+      shipmentExpenseAgg._sum.amount ?? 0
     )
 
     // ============================================================
@@ -92,9 +92,9 @@ export async function GET() {
       db.customer.count({ where: { isActive: true } }),
       db.shipmentRevenue.groupBy({
         by: ['customerId'],
-        _sum: { amountBase: true },
+        _sum: { amount: true },
         where: { customerId: { not: null } },
-        orderBy: { _sum: { amountBase: 'desc' } },
+        orderBy: { _sum: { amount: 'desc' } },
         take: 5,
       }),
     ])
@@ -113,7 +113,7 @@ export async function GET() {
     const top5CustomersByRevenue = revenueByCustomer.map((r) => ({
       customerId: r.customerId,
       customerName: customerMap.get(r.customerId!) ?? 'Unknown',
-      totalRevenue: Math.round(r._sum.amountBase ?? 0),
+      totalRevenue: Math.round(r._sum.amount ?? 0),
     }))
 
     // ============================================================
@@ -124,9 +124,9 @@ export async function GET() {
       db.vendor.count({ where: { isActive: true } }),
       db.shipmentExpense.groupBy({
         by: ['vendorId'],
-        _sum: { amountBase: true },
+        _sum: { amount: true },
         where: { vendorId: { not: null } },
-        orderBy: { _sum: { amountBase: 'desc' } },
+        orderBy: { _sum: { amount: 'desc' } },
         take: 5,
       }),
     ])
@@ -145,7 +145,7 @@ export async function GET() {
     const top5VendorsByExpense = expenseByVendor.map((r) => ({
       vendorId: r.vendorId,
       vendorName: vendorMap.get(r.vendorId!) ?? 'Unknown',
-      totalExpense: Math.round(r._sum.amountBase ?? 0),
+      totalExpense: Math.round(r._sum.amount ?? 0),
     }))
 
     // ============================================================
@@ -263,7 +263,7 @@ export async function GET() {
     const [shipmentExpenseByType, voyageExpenseByType] = await Promise.all([
       db.shipmentExpense.groupBy({
         by: ['expenseType'],
-        _sum: { amountBase: true, taxBase: true },
+        _sum: { amount: true },
       }),
       db.voyageExpense.groupBy({
         by: ['expenseType'],
@@ -274,7 +274,7 @@ export async function GET() {
     const expenseBreakdownMap: Record<string, number> = {}
 
     for (const row of shipmentExpenseByType) {
-      const total = (row._sum.amountBase ?? 0) + (row._sum.taxBase ?? 0)
+      const total = row._sum.amount ?? 0
       expenseBreakdownMap[row.expenseType] =
         (expenseBreakdownMap[row.expenseType] ?? 0) + Math.round(total)
     }
@@ -294,7 +294,7 @@ export async function GET() {
     const [shipmentRevenueByType, voyageRevenueByType] = await Promise.all([
       db.shipmentRevenue.groupBy({
         by: ['revenueType'],
-        _sum: { amountBase: true },
+        _sum: { amount: true },
       }),
       db.voyageRevenue.groupBy({
         by: ['revenueType'],
@@ -306,7 +306,7 @@ export async function GET() {
 
     for (const row of shipmentRevenueByType) {
       revenueBreakdownMap[row.revenueType] =
-        (revenueBreakdownMap[row.revenueType] ?? 0) + Math.round(row._sum.amountBase ?? 0)
+        (revenueBreakdownMap[row.revenueType] ?? 0) + Math.round(row._sum.amount ?? 0)
     }
 
     for (const row of voyageRevenueByType) {
@@ -324,7 +324,7 @@ export async function GET() {
     const now = new Date()
     const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1)
 
-    const [monthlyShipments, monthlyShipmentRevenues, monthlyShipmentExpenses] =
+    const [monthlyShipments, monthlyShipmentRevenues, monthlyShipmentExpenses, monthlyVoyageRevenues, monthlyVoyageExpenses] =
       await Promise.all([
         db.shipment.findMany({
           where: { createdAt: { gte: sixMonthsAgo } },
@@ -332,11 +332,19 @@ export async function GET() {
         }),
         db.shipmentRevenue.findMany({
           where: { createdAt: { gte: sixMonthsAgo } },
-          select: { amountBase: true, createdAt: true },
+          select: { amount: true, createdAt: true },
         }),
         db.shipmentExpense.findMany({
           where: { expenseDate: { gte: sixMonthsAgo } },
-          select: { amountBase: true, taxBase: true, expenseDate: true },
+          select: { amount: true, expenseDate: true },
+        }),
+        db.voyageRevenue.findMany({
+          where: { revenueDate: { gte: sixMonthsAgo } },
+          select: { amount: true, revenueDate: true },
+        }),
+        db.voyageExpense.findMany({
+          where: { expenseDate: { gte: sixMonthsAgo } },
+          select: { amount: true, expenseDate: true },
         }),
       ])
 
@@ -376,13 +384,25 @@ export async function GET() {
     for (const r of monthlyShipmentRevenues) {
       const key = monthKey(r.createdAt)
       const entry = trendMap.get(key)
-      if (entry) entry.revenue += r.amountBase ?? 0
+      if (entry) entry.revenue += r.amount ?? 0
     }
 
     for (const e of monthlyShipmentExpenses) {
       const key = monthKey(e.expenseDate)
       const entry = trendMap.get(key)
-      if (entry) entry.expenses += (e.amountBase ?? 0) + (e.taxBase ?? 0)
+      if (entry) entry.expenses += e.amount ?? 0
+    }
+
+    for (const r of monthlyVoyageRevenues) {
+      const key = monthKey(r.revenueDate)
+      const entry = trendMap.get(key)
+      if (entry) entry.revenue += r.amount ?? 0
+    }
+
+    for (const e of monthlyVoyageExpenses) {
+      const key = monthKey(e.expenseDate)
+      const entry = trendMap.get(key)
+      if (entry) entry.expenses += e.amount ?? 0
     }
 
     // Round final monthly values

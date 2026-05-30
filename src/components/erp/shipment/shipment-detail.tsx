@@ -197,12 +197,9 @@ interface ExpenseData {
   id: string
   expenseType: string
   vendor: { id: string; name: string } | null
-  currency: string
-  exchangeRate: number
+  quantity: number | null
+  unitPrice: number | null
   amount: number
-  tax: number
-  amountBase: number | null
-  taxBase: number | null
   paymentStatus: string
   invoiceNumber: string | null
   notes: string | null
@@ -214,12 +211,10 @@ interface RevenueData {
   customer: { id: string; name: string } | null
   revenueType: string
   invoiceNumber: string | null
-  currency: string
-  exchangeRate: number
+  quantity: number | null
+  unitPrice: number | null
   amount: number
-  tax: number
-  amountBase: number | null
-  taxBase: number | null
+  notes: string | null
   dueDate: string | null
   paymentStatus: string
 }
@@ -232,6 +227,7 @@ export function ShipmentDetail() {
   const [showForm, setShowForm] = useState(false)
   const [deleteDialog, setDeleteDialog] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
 
   // Container form
   const [showContainerForm, setShowContainerForm] = useState(false)
@@ -255,10 +251,8 @@ export function ShipmentDetail() {
   const [expenseForm, setExpenseForm] = useState({
     expenseType: 'othc',
     vendorId: '',
-    currency: 'USD',
-    exchangeRate: '1',
-    amount: '',
-    tax: '0',
+    quantity: '1',
+    unitPrice: '',
     paymentStatus: 'pending',
     invoiceNumber: '',
     notes: '',
@@ -273,12 +267,12 @@ export function ShipmentDetail() {
     customerId: '',
     revenueType: 'othc',
     invoiceNumber: '',
-    currency: 'USD',
-    exchangeRate: '1',
+    quantity: '1',
+    unitPrice: '',
     amount: '',
-    tax: '0',
     dueDate: '',
     paymentStatus: 'pending',
+    notes: '',
   })
   const [revenueSubmitting, setRevenueSubmitting] = useState(false)
   const [editingRevenue, setEditingRevenue] = useState<any>(null)
@@ -456,12 +450,14 @@ export function ShipmentDetail() {
     if (!selectedShipmentId) return
     setExpenseSubmitting(true)
     try {
+      const qty = parseFloat(expenseForm.quantity) || 0
+      const unitPrice = parseFloat(expenseForm.unitPrice) || 0
       const body = {
         ...expenseForm,
         vendorId: expenseForm.vendorId || null,
-        exchangeRate: parseFloat(expenseForm.exchangeRate),
-        amount: parseFloat(expenseForm.amount),
-        tax: parseFloat(expenseForm.tax),
+        quantity: qty,
+        unitPrice,
+        amount: qty * unitPrice,
       }
       const res = await fetch(
         editingExpense
@@ -478,8 +474,8 @@ export function ShipmentDetail() {
         setShowExpenseForm(false)
         setEditingExpense(null)
         setExpenseForm({
-          expenseType: 'othc', vendorId: '', currency: 'USD',
-          exchangeRate: '1', amount: '', tax: '0', paymentStatus: 'pending',
+          expenseType: 'othc', vendorId: '', quantity: '1',
+          unitPrice: '', paymentStatus: 'pending',
           invoiceNumber: '', notes: '',
         })
         fetchShipment(false)
@@ -528,12 +524,15 @@ export function ShipmentDetail() {
     if (!selectedShipmentId) return
     setRevenueSubmitting(true)
     try {
+      const qty = parseFloat(revenueForm.quantity) || 0
+      const unitPrice = parseFloat(revenueForm.unitPrice) || 0
+      const amount = revenueForm.amount ? parseFloat(revenueForm.amount) : qty * unitPrice
       const body = {
         ...revenueForm,
         customerId: revenueForm.customerId || null,
-        exchangeRate: parseFloat(revenueForm.exchangeRate),
-        amount: parseFloat(revenueForm.amount),
-        tax: parseFloat(revenueForm.tax),
+        quantity: qty,
+        unitPrice,
+        amount,
         dueDate: revenueForm.dueDate || null,
       }
       const res = await fetch(
@@ -553,8 +552,8 @@ export function ShipmentDetail() {
         setContainerPrices({})
         setRevenueForm({
           customerId: shipment?.customer?.id || '', revenueType: 'othc', invoiceNumber: '',
-          currency: 'USD', exchangeRate: '1', amount: '', tax: '0',
-          dueDate: '', paymentStatus: 'pending',
+          quantity: '1', unitPrice: '', amount: '',
+          dueDate: '', paymentStatus: 'pending', notes: '',
         })
         fetchShipment(false)
         fetchProfit()
@@ -633,11 +632,11 @@ export function ShipmentDetail() {
   }
 
   const totalExpenses = shipment.expenses.reduce(
-    (sum, e) => sum + (e.amountBase || 0) + (e.taxBase || 0),
+    (sum, e) => sum + (e.amount || 0),
     0
   )
   const totalRevenues = shipment.revenues.reduce(
-    (sum, r) => sum + (r.amountBase || 0) + (r.taxBase || 0),
+    (sum, r) => sum + (r.amount || 0),
     0
   )
 
@@ -653,6 +652,24 @@ export function ShipmentDetail() {
 
   const statusTimeline = ['draft', 'booked', 'loading', 'in_transit', 'arrived', 'customs_clearance', 'delivered']
   const currentStatusIdx = statusTimeline.indexOf(shipment.status)
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (newStatus === shipment.status) return
+    setUpdatingStatus(newStatus)
+    try {
+      const res = await fetch(`/api/shipments/${shipment.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      const json = await res.json()
+      if (json.success) fetchShipment()
+    } catch (e) {
+      console.error('Failed to update status', e)
+    } finally {
+      setUpdatingStatus(null)
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -708,41 +725,73 @@ export function ShipmentDetail() {
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-4">
           {/* Status Timeline */}
-          {shipment.status !== 'cancelled' && (
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between overflow-x-auto">
-                  {statusTimeline.map((st, idx) => (
-                    <div key={st} className="flex items-center">
-                      <div className="flex flex-col items-center min-w-[80px]">
-                        <div
-                          className={`size-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                            idx <= currentStatusIdx
-                              ? 'bg-emerald-600 text-white'
-                              : 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
-                          }`}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center overflow-x-auto">
+                {shipment.status === 'cancelled' ? (
+                  <div className="flex items-center gap-2 text-red-600">
+                    <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Cancelled</Badge>
+                  </div>
+                ) : (
+                  <>
+                    {statusTimeline.map((st, idx) => (
+                      <div key={st} className="flex items-center">
+                        <button
+                          type="button"
+                          disabled={updatingStatus !== null}
+                          onClick={() => handleStatusChange(st)}
+                          className="flex flex-col items-center min-w-[80px] group"
                         >
-                          {idx <= currentStatusIdx ? '✓' : idx + 1}
-                        </div>
-                        <span className="text-[10px] mt-1 text-center text-muted-foreground whitespace-nowrap">
-                          {statusLabels[st]}
-                        </span>
+                          <div
+                            className={`size-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                              idx <= currentStatusIdx
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+                            } group-hover:ring-2 group-hover:ring-emerald-400 group-focus-visible:ring-2 group-focus-visible:ring-emerald-400 cursor-pointer`}
+                          >
+                            {updatingStatus === st ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              idx <= currentStatusIdx ? '✓' : idx + 1
+                            )}
+                          </div>
+                          <span className="text-[10px] mt-1 text-center text-muted-foreground whitespace-nowrap">
+                            {statusLabels[st]}
+                          </span>
+                        </button>
+                        {idx < statusTimeline.length - 1 && (
+                          <div
+                            className={`h-0.5 w-8 mx-1 ${
+                              idx < currentStatusIdx
+                                ? 'bg-emerald-500'
+                                : 'bg-gray-200 dark:bg-gray-700'
+                            }`}
+                          />
+                        )}
                       </div>
-                      {idx < statusTimeline.length - 1 && (
-                        <div
-                          className={`h-0.5 w-8 mx-1 ${
-                            idx < currentStatusIdx
-                              ? 'bg-emerald-500'
-                              : 'bg-gray-200 dark:bg-gray-700'
-                          }`}
-                        />
-                      )}
+                    ))}
+                    <div className="ml-4 pl-4 border-l border-border">
+                      <button
+                        type="button"
+                        disabled={updatingStatus !== null}
+                        onClick={() => handleStatusChange('cancelled')}
+                        className="flex flex-col items-center min-w-[70px] group"
+                      >
+                        <div className="size-8 rounded-full flex items-center justify-center text-xs font-semibold bg-red-100 text-red-600 group-hover:ring-2 group-hover:ring-red-400 group-focus-visible:ring-2 group-focus-visible:ring-red-400 cursor-pointer transition-all">
+                          {updatingStatus === 'cancelled' ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            '✕'
+                          )}
+                        </div>
+                        <span className="text-xs mt-1 text-red-500">Cancel</span>
+                      </button>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                  </>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1199,12 +1248,12 @@ export function ShipmentDetail() {
                         <TableRow>
                           <TableHead>Expense Type</TableHead>
                           <TableHead>Vendor</TableHead>
-                          <TableHead>Currency</TableHead>
-                          <TableHead className="text-right">Amount</TableHead>
-                          <TableHead className="text-right">Tax</TableHead>
-                          <TableHead className="text-right">Total (Base)</TableHead>
+                          <TableHead className="text-right">Qty</TableHead>
+                          <TableHead className="text-right">Unit Price</TableHead>
+                          <TableHead className="text-right">Total</TableHead>
                           <TableHead>Payment</TableHead>
                           <TableHead>Invoice #</TableHead>
+                          <TableHead>Notes</TableHead>
                           <TableHead className="w-[80px]">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -1215,11 +1264,10 @@ export function ShipmentDetail() {
                               {expenseTypeLabels[e.expenseType] || e.expenseType}
                             </TableCell>
                             <TableCell>{e.vendor?.name || '—'}</TableCell>
-                            <TableCell>{e.currency}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(e.amount)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(e.tax)}</TableCell>
+                            <TableCell className="text-right">{e.quantity ?? 1}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(e.unitPrice ?? 0)}</TableCell>
                             <TableCell className="text-right font-medium">
-                              {formatCurrency((e.amountBase || 0) + (e.taxBase || 0))}
+                              {formatCurrency(e.amount || 0)}
                             </TableCell>
                             <TableCell>
                               <Badge
@@ -1231,6 +1279,7 @@ export function ShipmentDetail() {
                               </Badge>
                             </TableCell>
                             <TableCell>{e.invoiceNumber || '—'}</TableCell>
+                            <TableCell className="max-w-[120px] truncate">{e.notes || '—'}</TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1">
                                 <Button
@@ -1242,10 +1291,8 @@ export function ShipmentDetail() {
                                     setExpenseForm({
                                       expenseType: e.expenseType,
                                       vendorId: e.vendor?.id || '',
-                                      currency: e.currency,
-                                      exchangeRate: e.exchangeRate.toString(),
-                                      amount: e.amount.toString(),
-                                      tax: e.tax.toString(),
+                                      quantity: (e.quantity ?? 1).toString(),
+                                      unitPrice: (e.unitPrice ?? 0).toString(),
                                       paymentStatus: e.paymentStatus,
                                       invoiceNumber: e.invoiceNumber || '',
                                       notes: e.notes || '',
@@ -1396,27 +1443,16 @@ export function ShipmentDetail() {
                   </Popover>
                 </div>
                 <div className="space-y-2">
-                  <Label>Currency</Label>
-                  <Select value={expenseForm.currency} onValueChange={(v) => setExpenseForm({ ...expenseForm, currency: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {currencies.map((c) => (
-                        <SelectItem key={c.code} value={c.code}>{c.code}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Quantity *</Label>
+                  <Input type="number" value={expenseForm.quantity} onChange={(e) => setExpenseForm({ ...expenseForm, quantity: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Exchange Rate</Label>
-                  <Input type="number" value={expenseForm.exchangeRate} onChange={(e) => setExpenseForm({ ...expenseForm, exchangeRate: e.target.value })} />
+                  <Label>Unit Price *</Label>
+                  <Input type="number" value={expenseForm.unitPrice} onChange={(e) => setExpenseForm({ ...expenseForm, unitPrice: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Amount *</Label>
-                  <Input type="number" value={expenseForm.amount} onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Tax</Label>
-                  <Input type="number" value={expenseForm.tax} onChange={(e) => setExpenseForm({ ...expenseForm, tax: e.target.value })} />
+                  <Label>Total</Label>
+                  <Input type="number" value={((parseFloat(expenseForm.quantity) || 0) * (parseFloat(expenseForm.unitPrice) || 0)).toFixed(2)} disabled />
                 </div>
                 <div className="space-y-2">
                   <Label>Payment Status</Label>
@@ -1491,12 +1527,12 @@ export function ShipmentDetail() {
                           <TableHead>Customer</TableHead>
                           <TableHead>Revenue Type</TableHead>
                           <TableHead>Invoice #</TableHead>
-                          <TableHead>Currency</TableHead>
-                          <TableHead className="text-right">Amount</TableHead>
-                          <TableHead className="text-right">Tax</TableHead>
-                          <TableHead className="text-right">Total (Base)</TableHead>
+                          <TableHead className="text-right">Qty</TableHead>
+                          <TableHead className="text-right">Unit Price</TableHead>
+                          <TableHead className="text-right">Total</TableHead>
                           <TableHead>Payment</TableHead>
                           <TableHead>Due Date</TableHead>
+                          <TableHead>Notes</TableHead>
                           <TableHead className="w-[80px]">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -1506,11 +1542,10 @@ export function ShipmentDetail() {
                             <TableCell className="font-medium">{r.customer?.name || '—'}</TableCell>
                             <TableCell>{revenueTypeLabels[r.revenueType] || r.revenueType}</TableCell>
                             <TableCell>{r.invoiceNumber || '—'}</TableCell>
-                            <TableCell>{r.currency}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(r.amount)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(r.tax)}</TableCell>
+                            <TableCell className="text-right">{r.quantity ?? 1}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(r.unitPrice ?? 0)}</TableCell>
                             <TableCell className="text-right font-medium">
-                              {formatCurrency((r.amountBase || 0) + (r.taxBase || 0))}
+                              {formatCurrency(r.amount || 0)}
                             </TableCell>
                             <TableCell>
                               <Badge
@@ -1522,6 +1557,7 @@ export function ShipmentDetail() {
                               </Badge>
                             </TableCell>
                             <TableCell>{r.dueDate ? format(new Date(r.dueDate), 'MMM dd') : '—'}</TableCell>
+                            <TableCell className="max-w-[120px] truncate">{r.notes || '—'}</TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1">
                                 <Button
@@ -1534,12 +1570,12 @@ export function ShipmentDetail() {
                                       customerId: r.customer?.id || '',
                                       revenueType: r.revenueType,
                                       invoiceNumber: r.invoiceNumber || '',
-                                      currency: r.currency,
-                                      exchangeRate: r.exchangeRate.toString(),
+                                      quantity: (r.quantity ?? 1).toString(),
+                                      unitPrice: (r.unitPrice ?? 0).toString(),
                                       amount: r.amount.toString(),
-                                      tax: r.tax.toString(),
                                       dueDate: r.dueDate ? format(new Date(r.dueDate), 'yyyy-MM-dd') : '',
                                       paymentStatus: r.paymentStatus,
+                                      notes: r.notes || '',
                                     })
                                     setShowRevenueForm(true)
                                   }}
@@ -1660,6 +1696,14 @@ export function ShipmentDetail() {
                 </div>
               )}
               <div className="grid grid-cols-2 gap-4 py-4">
+                <div className="space-y-2 col-span-2">
+                  <Label>Revenue Type *</Label>
+                  <ChargeTypeCombobox
+                    type="revenue"
+                    value={revenueForm.revenueType}
+                    onValueChange={(v) => setRevenueForm({ ...revenueForm, revenueType: v })}
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label>Customer</Label>
                   <Popover open={customerPopoverOpen} onOpenChange={setCustomerPopoverOpen}>
@@ -1722,39 +1766,20 @@ export function ShipmentDetail() {
                   </Popover>
                 </div>
                 <div className="space-y-2">
-                  <Label>Revenue Type *</Label>
-                  <ChargeTypeCombobox
-                    type="revenue"
-                    value={revenueForm.revenueType}
-                    onValueChange={(v) => setRevenueForm({ ...revenueForm, revenueType: v })}
-                  />
-                </div>
-                <div className="space-y-2">
                   <Label>Invoice Number</Label>
                   <Input value={revenueForm.invoiceNumber} onChange={(e) => setRevenueForm({ ...revenueForm, invoiceNumber: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Currency</Label>
-                  <Select value={revenueForm.currency} onValueChange={(v) => setRevenueForm({ ...revenueForm, currency: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {currencies.map((c) => (
-                        <SelectItem key={c.code} value={c.code}>{c.code}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Quantity *</Label>
+                  <Input type="number" value={revenueForm.quantity} onChange={(e) => setRevenueForm({ ...revenueForm, quantity: e.target.value, amount: '' })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Exchange Rate</Label>
-                  <Input type="number" value={revenueForm.exchangeRate} onChange={(e) => setRevenueForm({ ...revenueForm, exchangeRate: e.target.value })} />
+                  <Label>Unit Price *</Label>
+                  <Input type="number" value={revenueForm.unitPrice} onChange={(e) => setRevenueForm({ ...revenueForm, unitPrice: e.target.value, amount: '' })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Amount *</Label>
-                  <Input type="number" readOnly value={revenueForm.amount} className="bg-muted" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Tax</Label>
-                  <Input type="number" value={revenueForm.tax} onChange={(e) => setRevenueForm({ ...revenueForm, tax: e.target.value })} />
+                  <Label>Total</Label>
+                  <Input type="number" value={((parseFloat(revenueForm.quantity) || 0) * (parseFloat(revenueForm.unitPrice) || 0)).toFixed(2)} disabled />
                 </div>
                 <div className="space-y-2">
                   <Label>Due Date</Label>
@@ -1771,6 +1796,10 @@ export function ShipmentDetail() {
                       <SelectItem value="overdue">Overdue</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="space-y-2 col-span-2">
+                  <Label>Notes</Label>
+                  <Textarea value={revenueForm.notes} onChange={(e) => setRevenueForm({ ...revenueForm, notes: e.target.value })} rows={2} />
                 </div>
               </div>
               <DialogFooter>

@@ -47,19 +47,19 @@ export async function GET() {
     // === Monthly Revenue & Expenses (current month) ===
     const monthlyRevenues = await db.shipmentRevenue.findMany({
       where: { createdAt: { gte: monthStart } },
-      select: { amountBase: true },
+      select: { amount: true },
     })
     const monthlyExpenses = await db.shipmentExpense.findMany({
       where: { expenseDate: { gte: monthStart } },
-      select: { amountBase: true, taxBase: true },
+      select: { amount: true },
     })
 
     const monthlyRevenueTotal = monthlyRevenues.reduce(
-      (sum, r) => sum + (r.amountBase || 0),
+      (sum, r) => sum + (r.amount || 0),
       0
     )
     const monthlyExpenseTotal = monthlyExpenses.reduce(
-      (sum, e) => sum + (e.amountBase || 0) + (e.taxBase || 0),
+      (sum, e) => sum + (e.amount || 0),
       0
     )
     const monthlyNetProfit = monthlyRevenueTotal - monthlyExpenseTotal
@@ -100,19 +100,19 @@ export async function GET() {
         where: {
           createdAt: { gte: monthDate, lte: monthEnd },
         },
-        select: { amountBase: true },
+        select: { amount: true },
       })
 
       const monthExpenses = await db.shipmentExpense.findMany({
         where: {
           expenseDate: { gte: monthDate, lte: monthEnd },
         },
-        select: { amountBase: true, taxBase: true },
+        select: { amount: true },
       })
 
-      const rev = monthRevenues.reduce((sum, r) => sum + (r.amountBase || 0), 0)
+      const rev = monthRevenues.reduce((sum, r) => sum + (r.amount || 0), 0)
       const exp = monthExpenses.reduce(
-        (sum, e) => sum + (e.amountBase || 0) + (e.taxBase || 0),
+        (sum, e) => sum + (e.amount || 0),
         0
       )
 
@@ -129,14 +129,14 @@ export async function GET() {
       where: {
         expenseDate: { gte: sixMonthsAgo },
       },
-      select: { expenseType: true, amountBase: true, taxBase: true },
+      select: { expenseType: true, amount: true },
     })
 
     const expenseBreakdown: Record<string, number> = {}
     for (const e of allExpenses) {
       const type = e.expenseType
       expenseBreakdown[type] =
-        (expenseBreakdown[type] || 0) + (e.amountBase || 0) + (e.taxBase || 0)
+        (expenseBreakdown[type] || 0) + (e.amount || 0)
     }
 
     // Round breakdown values
@@ -163,9 +163,9 @@ export async function GET() {
     // === Top Customers by Revenue ===
     const topCustomersRaw = await db.shipmentRevenue.groupBy({
       by: ['customerId'],
-      _sum: { amountBase: true },
+      _sum: { amount: true },
       where: { customerId: { not: null } },
-      orderBy: { _sum: { amountBase: 'desc' } },
+      orderBy: { _sum: { amount: 'desc' } },
       take: 10,
     })
 
@@ -184,7 +184,7 @@ export async function GET() {
         customerId: r.customerId,
         customerName: customer?.name || 'Unknown',
         customerCode: customer?.code || '',
-        totalRevenue: Math.round((r._sum.amountBase || 0) * 100) / 100,
+        totalRevenue: Math.round((r._sum.amount || 0) * 100) / 100,
       }
     })
 

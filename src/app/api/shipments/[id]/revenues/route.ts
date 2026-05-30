@@ -57,24 +57,16 @@ export async function POST(
       )
     }
 
-    const exchangeRate = body.exchangeRate || 1
-    const amount = body.amount
-    const tax = body.tax || 0
-    const amountBase = amount * exchangeRate
-    const taxBase = tax * exchangeRate
-
     const revenue = await db.shipmentRevenue.create({
       data: {
         shipmentId: id,
         customerId: body.customerId || null,
         revenueType: body.revenueType,
         invoiceNumber: body.invoiceNumber || null,
-        currency: body.currency || 'USD',
-        exchangeRate,
-        amount,
-        tax,
-        amountBase,
-        taxBase,
+        quantity: body.quantity ?? 1,
+        unitPrice: body.unitPrice ?? 0,
+        amount: body.amount,
+        notes: body.notes || null,
         dueDate: body.dueDate ? new Date(body.dueDate) : null,
         paymentStatus: body.paymentStatus || 'pending',
       },

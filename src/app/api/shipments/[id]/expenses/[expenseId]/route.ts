@@ -28,24 +28,9 @@ export async function PATCH(
     const updateData: Record<string, unknown> = {}
     if (body.expenseType !== undefined) updateData.expenseType = body.expenseType
     if (body.vendorId !== undefined) updateData.vendorId = body.vendorId || null
-    if (body.currency !== undefined) updateData.currency = body.currency
-    if (body.exchangeRate !== undefined) {
-      updateData.exchangeRate = body.exchangeRate
-      const amount = body.amount ?? existing.amount
-      const tax = body.tax ?? existing.tax
-      updateData.amountBase = amount * body.exchangeRate
-      updateData.taxBase = tax * body.exchangeRate
-    }
-    if (body.amount !== undefined) {
-      updateData.amount = body.amount
-      const rate = body.exchangeRate ?? existing.exchangeRate
-      updateData.amountBase = body.amount * rate
-    }
-    if (body.tax !== undefined) {
-      updateData.tax = body.tax
-      const rate = body.exchangeRate ?? existing.exchangeRate
-      updateData.taxBase = body.tax * rate
-    }
+    if (body.quantity !== undefined) updateData.quantity = body.quantity
+    if (body.unitPrice !== undefined) updateData.unitPrice = body.unitPrice
+    if (body.amount !== undefined) updateData.amount = body.amount
     if (body.paymentStatus !== undefined) updateData.paymentStatus = body.paymentStatus
     if (body.invoiceNumber !== undefined) updateData.invoiceNumber = body.invoiceNumber || null
     if (body.notes !== undefined) updateData.notes = body.notes || null

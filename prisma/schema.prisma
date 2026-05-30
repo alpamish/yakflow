@@ -202,12 +202,9 @@ model ShipmentExpense {
   expenseType   String   // othc, dthc, x_ray, inspection, d_and_d, storage, doc, pick_up
   vendorId      String?
   vendor        Vendor?  @relation(fields: [vendorId], references: [id])
-  currency      String   @default("USD")
-  exchangeRate  Float    @default(1)
-  amount        Float
-  tax           Float    @default(0)
-  amountBase    Float?   // amount * exchangeRate (in base currency)
-  taxBase       Float?   // tax * exchangeRate (in base currency)
+  quantity      Float    @default(1)
+  unitPrice     Float    @default(0)
+  amount        Float    // quantity * unitPrice
   paymentStatus String   @default("pending") // pending, partial, paid
   invoiceNumber String?
   notes         String?
@@ -225,12 +222,10 @@ model ShipmentRevenue {
   customer      Customer? @relation(fields: [customerId], references: [id])
   revenueType   String   // othc, dthc, x_ray, inspection, d_and_d, storage, doc, pick_up
   invoiceNumber String?
-  currency      String   @default("USD")
-  exchangeRate  Float    @default(1)
-  amount        Float
-  tax           Float    @default(0)
-  amountBase    Float?   // amount * exchangeRate (in base currency)
-  taxBase       Float?   // tax * exchangeRate (in base currency)
+  quantity      Float    @default(1)
+  unitPrice     Float    @default(0)
+  amount        Float    // quantity * unitPrice
+  notes         String?
   dueDate       DateTime?
   paymentStatus String   @default("pending") // pending, partial, paid, overdue
   createdAt     DateTime @default(now())

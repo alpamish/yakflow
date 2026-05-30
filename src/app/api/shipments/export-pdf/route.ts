@@ -28,15 +28,15 @@ function buildReportData(shipments: Awaited<ReturnType<typeof db.shipment.findMa
   switch (reportType) {
     case 'shipment_summary':
       return shipments.map(s => {
-        const totalRev = s.revenues.reduce((sum: number, r: { amountBase: number | null }) => sum + (r.amountBase || 0), 0)
-        const totalExp = s.expenses.reduce((sum: number, e: { amountBase: number | null; taxBase: number | null }) => sum + (e.amountBase || 0) + (e.taxBase || 0), 0)
+        const totalRev = s.revenues.reduce((sum: number, r: { amount: number | null }) => sum + (r.amount || 0), 0)
+        const totalExp = s.expenses.reduce((sum: number, e: { amount: number | null }) => sum + (e.amount || 0), 0)
         return [s.shipmentNumber, s.direction.toUpperCase(), s.transportMode.toUpperCase(), s.customer?.name || '', `${s.originCountry || ''} → ${s.destinationCountry || ''}`, statusLabels[s.status] || s.status, String(s.containers.length), fmtCurrency(totalRev), fmtCurrency(totalExp), fmtCurrency(totalRev - totalExp)]
       })
 
     case 'profitability':
       return shipments.map(s => {
-        const totalRev = s.revenues.reduce((sum: number, r: { amountBase: number | null }) => sum + (r.amountBase || 0), 0)
-        const totalExp = s.expenses.reduce((sum: number, e: { amountBase: number | null; taxBase: number | null }) => sum + (e.amountBase || 0) + (e.taxBase || 0), 0)
+        const totalRev = s.revenues.reduce((sum: number, r: { amount: number | null }) => sum + (r.amount || 0), 0)
+        const totalExp = s.expenses.reduce((sum: number, e: { amount: number | null }) => sum + (e.amount || 0), 0)
         const profit = totalRev - totalExp
         const margin = totalRev > 0 ? (profit / totalRev * 100).toFixed(1) : '0.0'
         return [s.shipmentNumber, s.customer?.name || '', `${s.originCountry || ''} → ${s.destinationCountry || ''}`, fmtCurrency(totalRev), fmtCurrency(totalExp), fmtCurrency(profit), margin + '%']
@@ -46,8 +46,8 @@ function buildReportData(shipments: Awaited<ReturnType<typeof db.shipment.findMa
       const map: Record<string, { name: string; shipments: number; revenue: number; expenses: number }> = {}
       for (const s of shipments) {
         const key = (s.customer as { name: string } | null)?.name || 'Unknown'
-        const totalRev = s.revenues.reduce((sum: number, r: { amountBase: number | null }) => sum + (r.amountBase || 0), 0)
-        const totalExp = s.expenses.reduce((sum: number, e: { amountBase: number | null; taxBase: number | null }) => sum + (e.amountBase || 0) + (e.taxBase || 0), 0)
+        const totalRev = s.revenues.reduce((sum: number, r: { amount: number | null }) => sum + (r.amount || 0), 0)
+        const totalExp = s.expenses.reduce((sum: number, e: { amount: number | null }) => sum + (e.amount || 0), 0)
         if (!map[key]) map[key] = { name: key, shipments: 0, revenue: 0, expenses: 0 }
         map[key].shipments++
         map[key].revenue += totalRev
@@ -59,10 +59,10 @@ function buildReportData(shipments: Awaited<ReturnType<typeof db.shipment.findMa
     case 'vendor_ledger': {
       const map: Record<string, { name: string; count: number; expenses: number }> = {}
       for (const s of shipments) {
-        for (const e of s.expenses as Array<{ vendor: { name: string } | null; amountBase: number | null; taxBase: number | null }>) {
+        for (const e of s.expenses as Array<{ vendor: { name: string } | null; amount: number | null }>) {
           const key = e.vendor?.name || 'Unknown'
           if (!map[key]) map[key] = { name: key, count: 0, expenses: 0 }
-          map[key].expenses += (e.amountBase || 0) + (e.taxBase || 0)
+          map[key].expenses += e.amount || 0
           map[key].count++
         }
       }
@@ -72,8 +72,8 @@ function buildReportData(shipments: Awaited<ReturnType<typeof db.shipment.findMa
     case 'expense_report': {
       const rows: string[][] = []
       for (const s of shipments) {
-        for (const e of s.expenses as Array<{ expenseType: string; vendor: { name: string } | null; currency: string; amount: number; amountBase: number | null; taxBase: number | null; paymentStatus: string; expenseDate: Date }>) {
-          rows.push([s.shipmentNumber, expenseTypeLabels[e.expenseType] || e.expenseType, e.vendor?.name || '', e.currency, fmt(e.amount).toString(), fmt(e.amountBase || 0).toString(), fmt(e.taxBase || 0).toString(), e.paymentStatus, fmtDate(e.expenseDate)])
+        for (const e of s.expenses as Array<{ expenseType: string; vendor: { name: string } | null; quantity: number | null; unitPrice: number | null; amount: number; paymentStatus: string; expenseDate: Date }>) {
+          rows.push([s.shipmentNumber, expenseTypeLabels[e.expenseType] || e.expenseType, e.vendor?.name || '', String(e.quantity ?? 1), fmt(e.unitPrice ?? 0), fmt(e.amount || 0), e.paymentStatus, fmtDate(e.expenseDate)])
         }
       }
       return rows
@@ -82,8 +82,8 @@ function buildReportData(shipments: Awaited<ReturnType<typeof db.shipment.findMa
     case 'revenue_report': {
       const rows: string[][] = []
       for (const s of shipments) {
-        for (const r of s.revenues as Array<{ revenueType: string; customer: { name: string } | null; currency: string; amount: number; amountBase: number | null; paymentStatus: string; dueDate: Date | null }>) {
-          rows.push([s.shipmentNumber, revenueTypeLabels[r.revenueType] || r.revenueType, r.customer?.name || '', r.currency, fmt(r.amount).toString(), fmt(r.amountBase || 0).toString(), r.paymentStatus, fmtDate(r.dueDate)])
+        for (const r of s.revenues as Array<{ revenueType: string; customer: { name: string } | null; quantity: number | null; unitPrice: number | null; amount: number; paymentStatus: string; dueDate: Date | null }>) {
+          rows.push([s.shipmentNumber, revenueTypeLabels[r.revenueType] || r.revenueType, r.customer?.name || '', String(r.quantity ?? 1), fmt(r.unitPrice ?? 0), fmt(r.amount || 0), r.paymentStatus, fmtDate(r.dueDate)])
         }
       }
       return rows
@@ -93,8 +93,8 @@ function buildReportData(shipments: Awaited<ReturnType<typeof db.shipment.findMa
       const map: Record<string, { route: string; shipments: number; revenue: number; expenses: number }> = {}
       for (const s of shipments) {
         const route = `${s.originCountry || '—'} → ${s.destinationCountry || '—'}`
-        const totalRev = s.revenues.reduce((sum: number, r: { amountBase: number | null }) => sum + (r.amountBase || 0), 0)
-        const totalExp = s.expenses.reduce((sum: number, e: { amountBase: number | null; taxBase: number | null }) => sum + (e.amountBase || 0) + (e.taxBase || 0), 0)
+        const totalRev = s.revenues.reduce((sum: number, r: { amount: number | null }) => sum + (r.amount || 0), 0)
+        const totalExp = s.expenses.reduce((sum: number, e: { amount: number | null }) => sum + (e.amount || 0), 0)
         if (!map[route]) map[route] = { route, shipments: 0, revenue: 0, expenses: 0 }
         map[route].shipments++
         map[route].revenue += totalRev
@@ -106,7 +106,7 @@ function buildReportData(shipments: Awaited<ReturnType<typeof db.shipment.findMa
     case 'country_analysis': {
       const map: Record<string, { country: string; asOrigin: number; asDestination: number; revenue: number }> = {}
       for (const s of shipments) {
-        const totalRev = s.revenues.reduce((sum: number, r: { amountBase: number | null }) => sum + (r.amountBase || 0), 0)
+        const totalRev = s.revenues.reduce((sum: number, r: { amount: number | null }) => sum + (r.amount || 0), 0)
         if (s.originCountry) {
           if (!map[s.originCountry]) map[s.originCountry] = { country: s.originCountry, asOrigin: 0, asDestination: 0, revenue: 0 }
           map[s.originCountry].asOrigin++
@@ -123,7 +123,7 @@ function buildReportData(shipments: Awaited<ReturnType<typeof db.shipment.findMa
 
     case 'container_utilization':
       return shipments.map(s => {
-        const totalRev = s.revenues.reduce((sum: number, r: { amountBase: number | null }) => sum + (r.amountBase || 0), 0)
+        const totalRev = s.revenues.reduce((sum: number, r: { amount: number | null }) => sum + (r.amount || 0), 0)
         const cnt = s.containers.length
         return [s.shipmentNumber, s.customer?.name || '', String(cnt), `${s.originCountry || ''} → ${s.destinationCountry || ''}`, statusLabels[s.status] || s.status, cnt > 0 ? fmtCurrency(totalRev / cnt) : '—']
       })

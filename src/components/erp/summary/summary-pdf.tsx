@@ -214,7 +214,7 @@ interface SummaryPDFProps {
       totalPaymentAmount: number
       accountsReceivable: number
       accountsPayable: number
-      byCurrency: Record<string, number>
+      byCurrency: Record<string, { count: number; totalAmount: number; totalBase: number }>
     }
     containerSummary: {
       totalContainers: number
@@ -277,26 +277,23 @@ export function SummaryPDF({ data }: SummaryPDFProps) {
   const grandRevenue = data.revenueBreakdown.reduce((s, r) => s + r.total, 0)
 
   const financialColumns = [
-    { key: 'cat', label: 'Category', width: '30%' },
-    { key: 'ship', label: 'Shipment Ops', width: '18%', align: 'right' as const },
-    { key: 'voy', label: 'Voyage Finance', width: '18%', align: 'right' as const },
-    { key: 'combined', label: 'Combined Total', width: '18%', align: 'right' as const },
-    { key: 'share', label: '% Share', width: '16%', align: 'right' as const },
+    { key: 'cat', label: 'Category', width: '34%' },
+    { key: 'ship', label: 'Shipment Ops', width: '22%', align: 'right' as const },
+    { key: 'voy', label: 'Voyage Finance', width: '22%', align: 'right' as const },
+    { key: 'combined', label: 'Combined Total', width: '22%', align: 'right' as const },
   ]
 
   const expenseColumns = [
-    { key: 'no', label: 'No.', width: '8%' },
-    { key: 'type', label: 'Expense Type', width: '37%' },
+    { key: 'type', label: 'Expense Type', width: '42%' },
     { key: 'amount', label: `Amount (${cur})`, width: '25%', align: 'right' as const },
-    { key: 'pct', label: '% of Total', width: '15%', align: 'right' as const },
+    { key: 'pct', label: '% of Total', width: '18%', align: 'right' as const },
     { key: 'bar', label: '', width: '15%' },
   ]
 
   const revenueColumns = [
-    { key: 'no', label: 'No.', width: '8%' },
-    { key: 'type', label: 'Revenue Type', width: '37%' },
+    { key: 'type', label: 'Revenue Type', width: '42%' },
     { key: 'amount', label: `Amount (${cur})`, width: '25%', align: 'right' as const },
-    { key: 'pct', label: '% of Total', width: '15%', align: 'right' as const },
+    { key: 'pct', label: '% of Total', width: '18%', align: 'right' as const },
     { key: 'bar', label: '', width: '15%' },
   ]
 
@@ -327,14 +324,13 @@ export function SummaryPDF({ data }: SummaryPDFProps) {
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>Combined Financial Overview</Text>
           <Table columns={financialColumns} data={[
-            ['Gross Revenue', fmt(data.shipmentSummary.totalRevenue, sym), fmt(data.voyageSummary.totalRevenue, sym), fmt(totalRevenue, sym), '100%'],
-            ['Total Expenses', fmt(data.shipmentSummary.totalExpenses, sym), fmt(data.voyageSummary.totalExpenses, sym), fmt(totalExpenses, sym), pct(totalExpenses, totalRevenue)],
-            ['Net Profit', fmt(data.shipmentSummary.netProfit, sym), fmt(data.voyageSummary.netProfit, sym), fmt(totalProfit, sym), pct(totalProfit, totalRevenue)],
+            ['Gross Revenue', fmt(data.shipmentSummary.totalRevenue, sym), fmt(data.voyageSummary.totalRevenue, sym), fmt(totalRevenue, sym)],
+            ['Total Expenses', fmt(data.shipmentSummary.totalExpenses, sym), fmt(data.voyageSummary.totalExpenses, sym), fmt(totalExpenses, sym)],
+            ['Net Profit', fmt(data.shipmentSummary.netProfit, sym), fmt(data.voyageSummary.netProfit, sym), fmt(totalProfit, sym)],
             ['Profit Margin',
               data.shipmentSummary.totalRevenue > 0 ? ((data.shipmentSummary.netProfit / data.shipmentSummary.totalRevenue) * 100).toFixed(1) + '%' : '--',
               data.voyageSummary.totalRevenue > 0 ? ((data.voyageSummary.netProfit / data.voyageSummary.totalRevenue) * 100).toFixed(1) + '%' : '--',
               totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) + '%' : '--',
-              '--',
             ],
           ]} />
         </View>
@@ -344,7 +340,6 @@ export function SummaryPDF({ data }: SummaryPDFProps) {
           <Text style={styles.sectionHeader}>Shipment Operations</Text>
           <Table columns={[{ key: 'm', label: 'Metric', width: '60%' }, { key: 'v', label: 'Value', width: '40%', align: 'right' }]} data={[
             ['Total Shipments', String(data.shipmentSummary.totalShipments)],
-            ['Total Containers', String(data.shipmentSummary.totalContainers)],
             ['Shipment Net Profit', fmt(data.shipmentSummary.netProfit, sym)],
           ]} />
         </View>
@@ -367,13 +362,12 @@ export function SummaryPDF({ data }: SummaryPDFProps) {
           <Text style={styles.sectionHeader}>Expense Breakdown</Text>
           <Table columns={expenseColumns} data={[
             ...data.expenseBreakdown.map((item, i) => [
-              String(i + 1),
               EXPENSE_LABELS[item.type] || item.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
               fmt(item.total, sym),
               pct(item.total, grandExpense),
               '',
             ] as (string | number)[]),
-            ['', 'TOTAL EXPENSES', fmt(grandExpense, sym), '100%', ''],
+            ['TOTAL EXPENSES', fmt(grandExpense, sym), '100%', ''],
           ]} />
         </View>
 
@@ -382,13 +376,12 @@ export function SummaryPDF({ data }: SummaryPDFProps) {
           <Text style={styles.sectionHeader}>Revenue Breakdown</Text>
           <Table columns={revenueColumns} data={[
             ...data.revenueBreakdown.map((item, i) => [
-              String(i + 1),
               REVENUE_LABELS[item.type] || item.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
               fmt(item.total, sym),
               pct(item.total, grandRevenue),
               '',
             ] as (string | number)[]),
-            ['', 'TOTAL REVENUE', fmt(grandRevenue, sym), '100%', ''],
+            ['TOTAL REVENUE', fmt(grandRevenue, sym), '100%', ''],
           ]} />
         </View>
 
@@ -409,11 +402,17 @@ export function SummaryPDF({ data }: SummaryPDFProps) {
           <Text style={styles.sectionHeader}>Financial Summary</Text>
           <Table columns={[{ key: 'm', label: 'Metric', width: '60%' }, { key: 'v', label: 'Value', width: '40%', align: 'right' }]} data={[
             ['Total Invoices', String(data.financialSummary.totalInvoices)],
+            ['Subtotal', fmt(data.financialSummary.totalSubtotal, sym)],
+            ['Tax', fmt(data.financialSummary.totalTax, sym)],
             ['Total Invoice Amount', fmt(data.financialSummary.totalInvoiceAmount, sym)],
             ['Total Payments', String(data.financialSummary.totalPayments)],
             ['Total Payment Amount', fmt(data.financialSummary.totalPaymentAmount, sym)],
             ['Accounts Receivable', fmt(data.financialSummary.accountsReceivable, sym)],
             ['Accounts Payable', fmt(data.financialSummary.accountsPayable, sym)],
+            ['Net Receivable', fmt(data.financialSummary.accountsReceivable - data.financialSummary.accountsPayable, sym)],
+            ...Object.entries(data.financialSummary.byCurrency).flatMap(([code, info]) => [
+              [`${code} — ${info.count} invoice${info.count !== 1 ? 's' : ''}`, `${getCurrencySymbol(code)}${info.totalAmount.toLocaleString('en-US', { maximumFractionDigits: 0 })}`],
+            ]),
           ]} />
         </View>
 

@@ -29,24 +29,10 @@ export async function PATCH(
     if (body.customerId !== undefined) updateData.customerId = body.customerId || null
     if (body.revenueType !== undefined) updateData.revenueType = body.revenueType
     if (body.invoiceNumber !== undefined) updateData.invoiceNumber = body.invoiceNumber || null
-    if (body.currency !== undefined) updateData.currency = body.currency
-    if (body.exchangeRate !== undefined) {
-      updateData.exchangeRate = body.exchangeRate
-      const amount = body.amount ?? existing.amount
-      const tax = body.tax ?? existing.tax
-      updateData.amountBase = amount * body.exchangeRate
-      updateData.taxBase = tax * body.exchangeRate
-    }
-    if (body.amount !== undefined) {
-      updateData.amount = body.amount
-      const rate = body.exchangeRate ?? existing.exchangeRate
-      updateData.amountBase = body.amount * rate
-    }
-    if (body.tax !== undefined) {
-      updateData.tax = body.tax
-      const rate = body.exchangeRate ?? existing.exchangeRate
-      updateData.taxBase = body.tax * rate
-    }
+    if (body.quantity !== undefined) updateData.quantity = body.quantity
+    if (body.unitPrice !== undefined) updateData.unitPrice = body.unitPrice
+    if (body.amount !== undefined) updateData.amount = body.amount
+    if (body.notes !== undefined) updateData.notes = body.notes || null
     if (body.paymentStatus !== undefined) updateData.paymentStatus = body.paymentStatus
     if (body.dueDate !== undefined) updateData.dueDate = body.dueDate ? new Date(body.dueDate) : null
 

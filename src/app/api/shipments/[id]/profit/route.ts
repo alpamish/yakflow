@@ -35,11 +35,11 @@ export async function GET(
 
     // Calculate totals
     const grossRevenue = shipment.revenues.reduce(
-      (sum, r) => sum + (r.amountBase || 0),
+      (sum, r) => sum + (r.amount || 0),
       0
     )
     const totalExpense = shipment.expenses.reduce(
-      (sum, e) => sum + (e.amountBase || 0) + (e.taxBase || 0),
+      (sum, e) => sum + (e.amount || 0),
       0
     )
     const netProfit = grossRevenue - totalExpense
@@ -73,7 +73,7 @@ export async function GET(
         revenue: 0,
         expense: 0,
       }
-      existing.revenue += r.amountBase || 0
+      existing.revenue += r.amount || 0
       customerMap.set(key, existing)
     }
     for (const e of shipment.expenses) {
@@ -107,7 +107,7 @@ export async function GET(
     const expenseByType: Record<string, number> = {}
     for (const e of shipment.expenses) {
       const type = e.expenseType
-      expenseByType[type] = (expenseByType[type] || 0) + (e.amountBase || 0) + (e.taxBase || 0)
+      expenseByType[type] = (expenseByType[type] || 0) + (e.amount || 0)
     }
 
     return NextResponse.json({

@@ -59,11 +59,9 @@ interface ExpenseRow {
   id: string
   expenseType: string
   vendor: { id: string; name: string } | null
-  currency: string
+  quantity: number | null
+  unitPrice: number | null
   amount: number
-  tax: number
-  amountBase: number | null
-  taxBase: number | null
   paymentStatus: string
   invoiceNumber: string | null
   notes: string | null
@@ -152,15 +150,15 @@ export function ShipmentExpensesOverview() {
     return true
   })
 
-  const totalExpenses = filtered.reduce((sum, e) => sum + (e.amountBase || 0) + (e.taxBase || 0), 0)
-  const pendingAmount = filtered.filter(e => e.paymentStatus === 'pending').reduce((sum, e) => sum + (e.amountBase || 0) + (e.taxBase || 0), 0)
-  const paidAmount = filtered.filter(e => e.paymentStatus === 'paid').reduce((sum, e) => sum + (e.amountBase || 0) + (e.taxBase || 0), 0)
+  const totalExpenses = filtered.reduce((sum, e) => sum + (e.amount || 0), 0)
+  const pendingAmount = filtered.filter(e => e.paymentStatus === 'pending').reduce((sum, e) => sum + (e.amount || 0), 0)
+  const paidAmount = filtered.filter(e => e.paymentStatus === 'paid').reduce((sum, e) => sum + (e.amount || 0), 0)
 
   // Expense by type for chart
   const expenseByType: Record<string, number> = {}
   for (const e of filtered) {
     const type = expenseTypeLabels[e.expenseType] || e.expenseType
-    expenseByType[type] = (expenseByType[type] || 0) + (e.amountBase || 0) + (e.taxBase || 0)
+    expenseByType[type] = (expenseByType[type] || 0) + (e.amount || 0)
   }
   const chartData = Object.entries(expenseByType)
     .map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }))
@@ -342,11 +340,11 @@ export function ShipmentExpensesOverview() {
                       <TableHead>Shipment #</TableHead>
                       <TableHead>Expense Type</TableHead>
                       <TableHead>Vendor</TableHead>
-                      <TableHead>Currency</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                      <TableHead className="text-right">Tax</TableHead>
-                      <TableHead className="text-right">Total (Base)</TableHead>
+                      <TableHead className="text-right">Qty</TableHead>
+                      <TableHead className="text-right">Unit Price</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
                       <TableHead>Payment</TableHead>
+                      <TableHead>Notes</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -357,17 +355,17 @@ export function ShipmentExpensesOverview() {
                         </TableCell>
                         <TableCell>{expenseTypeLabels[e.expenseType] || e.expenseType}</TableCell>
                         <TableCell>{e.vendor?.name || '—'}</TableCell>
-                        <TableCell>{e.currency}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(e.amount)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(e.tax)}</TableCell>
+                        <TableCell className="text-right">{e.quantity ?? 1}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(e.unitPrice ?? 0)}</TableCell>
                         <TableCell className="text-right font-medium">
-                          {formatCurrency((e.amountBase || 0) + (e.taxBase || 0))}
+                          {formatCurrency(e.amount || 0)}
                         </TableCell>
                         <TableCell>
                           <Badge variant="secondary" className={paymentStatusColors[e.paymentStatus] || ''}>
                             {e.paymentStatus}
                           </Badge>
                         </TableCell>
+                        <TableCell className="max-w-[150px] truncate">{e.notes || '—'}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

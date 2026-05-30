@@ -34,7 +34,7 @@ interface SeedData {
     status: string; term: string | null; isEmpty: boolean; remarks?: string;
     containers: { containerType: string; unitCount: number; teuCount: number }[]
     revenues: { revenueType: string; amount: number; currency: string; description: string; paymentStatus: string }[]
-    expenses: { expenseType: string; amount: number; currency: string; description: string; paymentStatus: string }[]
+    expenses: { expenseType: string; amount: number; quantity?: number; unitPrice?: number; description: string; paymentStatus: string }[]
     invoicingParty?: string | null; qn?: string | null; igOog?: string | null;
     containerOwner?: string | null; pickUpFeeNotes?: string | null; notes?: string | null;
   }[]
@@ -393,16 +393,14 @@ async function main() {
 
     // Create shipment revenues
     for (const r of s.revenues) {
-      const rate = rateMap[r.currency] || 1.0
       await prisma.shipmentRevenue.create({
         data: {
           shipmentId: shipment.id,
           customerId,
           revenueType: r.revenueType,
-          currency: r.currency,
-          exchangeRate: rate,
+          quantity: 1,
+          unitPrice: r.amount,
           amount: r.amount,
-          amountBase: Math.round(r.amount * rate * 100) / 100,
           paymentStatus: r.paymentStatus || 'pending',
         },
       })
@@ -411,7 +409,6 @@ async function main() {
 
     // Create shipment expenses
     for (const e of s.expenses) {
-      const rate = rateMap[e.currency] || 1.0
       // Find vendor for expense
       let vendorId: string | null = null
       if (e.expenseType === 'dthc' && vendorMap['NUTEP Terminal']) {
@@ -425,10 +422,9 @@ async function main() {
           shipmentId: shipment.id,
           expenseType: e.expenseType,
           vendorId,
-          currency: e.currency,
-          exchangeRate: rate,
+          quantity: e.quantity ?? 1,
+          unitPrice: e.unitPrice ?? e.amount,
           amount: e.amount,
-          amountBase: Math.round(e.amount * rate * 100) / 100,
           paymentStatus: e.paymentStatus || 'pending',
           notes: e.description,
         },

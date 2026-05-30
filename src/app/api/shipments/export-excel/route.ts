@@ -52,8 +52,8 @@ export async function GET(request: NextRequest) {
     switch (reportType) {
       case 'shipment_summary': {
         const rows = shipments.map(s => {
-          const totalRev = s.revenues.reduce((sum, r) => sum + (r.amountBase || 0), 0)
-          const totalExp = s.expenses.reduce((sum, e) => sum + (e.amountBase || 0) + (e.taxBase || 0), 0)
+          const totalRev = s.revenues.reduce((sum, r) => sum + (r.amount || 0), 0)
+          const totalExp = s.expenses.reduce((sum, e) => sum + (e.amount || 0), 0)
           return {
             'Shipment #': s.shipmentNumber,
             'Direction': s.direction.toUpperCase(),
@@ -90,8 +90,8 @@ export async function GET(request: NextRequest) {
 
       case 'profitability': {
         const rows = shipments.map(s => {
-          const totalRev = s.revenues.reduce((sum, r) => sum + (r.amountBase || 0), 0)
-          const totalExp = s.expenses.reduce((sum, e) => sum + (e.amountBase || 0) + (e.taxBase || 0), 0)
+          const totalRev = s.revenues.reduce((sum, r) => sum + (r.amount || 0), 0)
+          const totalExp = s.expenses.reduce((sum, e) => sum + (e.amount || 0), 0)
           const profit = totalRev - totalExp
           const margin = totalRev > 0 ? (profit / totalRev) * 100 : 0
           return {
@@ -129,8 +129,8 @@ export async function GET(request: NextRequest) {
         const customerMap: Record<string, { name: string; code: string; shipments: number; revenue: number; expenses: number }> = {}
         for (const s of shipments) {
           const key = s.customer?.name || 'Unknown'
-          const totalRev = s.revenues.reduce((sum, r) => sum + (r.amountBase || 0), 0)
-          const totalExp = s.expenses.reduce((sum, e) => sum + (e.amountBase || 0) + (e.taxBase || 0), 0)
+          const totalRev = s.revenues.reduce((sum, r) => sum + (r.amount || 0), 0)
+          const totalExp = s.expenses.reduce((sum, e) => sum + (e.amount || 0), 0)
           if (!customerMap[key]) customerMap[key] = { name: key, code: s.customer?.code || '', shipments: 0, revenue: 0, expenses: 0 }
           customerMap[key].shipments++
           customerMap[key].revenue += totalRev
@@ -157,7 +157,7 @@ export async function GET(request: NextRequest) {
           for (const e of s.expenses) {
             const key = e.vendor?.name || 'Unknown'
             if (!vendorMap[key]) vendorMap[key] = { name: key, expenses: 0, count: 0 }
-            vendorMap[key].expenses += (e.amountBase || 0) + (e.taxBase || 0)
+            vendorMap[key].expenses += e.amount || 0
             vendorMap[key].count++
           }
         }
@@ -180,12 +180,9 @@ export async function GET(request: NextRequest) {
               'Shipment #': s.shipmentNumber,
               'Expense Type': expenseTypeLabels[e.expenseType] || e.expenseType,
               'Vendor': e.vendor?.name || '',
-              'Currency': e.currency,
-              'Exchange Rate': e.exchangeRate,
-              'Amount': fmt(e.amount),
-              'Tax': fmt(e.tax),
-              'Amount (Base USD)': fmt(e.amountBase || 0),
-              'Tax (Base USD)': fmt(e.taxBase || 0),
+              'Qty': e.quantity ?? 1,
+              'Unit Price': fmt(e.unitPrice ?? 0),
+              'Total': fmt(e.amount || 0),
               'Payment Status': e.paymentStatus,
               'Invoice #': e.invoiceNumber || '',
               'Notes': e.notes || '',
@@ -207,12 +204,9 @@ export async function GET(request: NextRequest) {
               'Shipment #': s.shipmentNumber,
               'Revenue Type': revenueTypeLabels[r.revenueType] || r.revenueType,
               'Customer': r.customer?.name || '',
-              'Currency': r.currency,
-              'Exchange Rate': r.exchangeRate,
-              'Amount': fmt(r.amount),
-              'Tax': fmt(r.tax),
-              'Amount (Base USD)': fmt(r.amountBase || 0),
-              'Tax (Base USD)': fmt(r.taxBase || 0),
+              'Qty': r.quantity ?? 1,
+              'Unit Price': fmt(r.unitPrice ?? 0),
+              'Total': fmt(r.amount || 0),
               'Payment Status': r.paymentStatus,
               'Invoice #': r.invoiceNumber || '',
               'Due Date': fmtDate(r.dueDate),
@@ -229,8 +223,8 @@ export async function GET(request: NextRequest) {
         const routeMap: Record<string, { route: string; shipments: number; revenue: number; expenses: number }> = {}
         for (const s of shipments) {
           const route = `${s.originCountry || '—'} → ${s.destinationCountry || '—'}`
-          const totalRev = s.revenues.reduce((sum, r) => sum + (r.amountBase || 0), 0)
-          const totalExp = s.expenses.reduce((sum, e) => sum + (e.amountBase || 0) + (e.taxBase || 0), 0)
+          const totalRev = s.revenues.reduce((sum, r) => sum + (r.amount || 0), 0)
+          const totalExp = s.expenses.reduce((sum, e) => sum + (e.amount || 0), 0)
           if (!routeMap[route]) routeMap[route] = { route, shipments: 0, revenue: 0, expenses: 0 }
           routeMap[route].shipments++
           routeMap[route].revenue += totalRev
@@ -253,7 +247,7 @@ export async function GET(request: NextRequest) {
       case 'country_analysis': {
         const countryMap: Record<string, { country: string; asOrigin: number; asDestination: number; revenue: number }> = {}
         for (const s of shipments) {
-          const totalRev = s.revenues.reduce((sum, r) => sum + (r.amountBase || 0), 0)
+          const totalRev = s.revenues.reduce((sum, r) => sum + (r.amount || 0), 0)
           if (s.originCountry) {
             if (!countryMap[s.originCountry]) countryMap[s.originCountry] = { country: s.originCountry, asOrigin: 0, asDestination: 0, revenue: 0 }
             countryMap[s.originCountry].asOrigin++
@@ -279,7 +273,7 @@ export async function GET(request: NextRequest) {
 
       case 'container_utilization': {
         const rows = shipments.map(s => {
-          const totalRev = s.revenues.reduce((sum, r) => sum + (r.amountBase || 0), 0)
+          const totalRev = s.revenues.reduce((sum, r) => sum + (r.amount || 0), 0)
           const cnt = s.containers.length
           return {
             'Shipment #': s.shipmentNumber,
