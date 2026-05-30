@@ -52,3 +52,11 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# AI agent context & development history
+agent-ctx/
+.zscripts/
+download/
+examples/
+upload/
+worklog.md
