@@ -151,6 +151,8 @@ interface ShipmentData {
   direction: string
   transportMode: string
   customer: { id: string; name: string; code: string } | null
+  voyageId: string | null
+  voyage: { id: string; voyageNumber: string; vesselName: string; status: string } | null
   shipper: string | null
   consignee: string | null
   notifyParty: string | null
@@ -857,8 +859,9 @@ export function ShipmentDetail() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {[
-                    { label: 'Vessel Name', value: shipment.vesselName || '—' },
-                    { label: 'Voyage Number', value: shipment.voyageNumber || '—' },
+                    { label: 'Vessel Name', value: shipment.voyage?.vesselName || shipment.vesselName || '—' },
+                    { label: 'Voyage Number', value: shipment.voyage?.voyageNumber || shipment.voyageNumber || '—' },
+                    { label: 'Voyage Status', value: shipment.voyage ? (shipment.voyage.status || '—') : '—' },
                     { label: 'Booking Number', value: shipment.bookingNumber || '—' },
                     { label: 'BL Number', value: shipment.blNumber || '—' },
                     { label: 'AWB Number', value: shipment.awbNumber || '—' },
@@ -1641,7 +1644,10 @@ export function ShipmentDetail() {
                       </div>
                     )
                   })}
-                  <div className="flex justify-end pt-2 border-t">
+                  <div className="flex items-center justify-between pt-2 border-t">
+                    <span className="text-sm text-muted-foreground">
+                      Total Containers: <strong>{shipment.containers.reduce((s, c) => s + (c.quantity || 1), 0)}</strong>
+                    </span>
                     <span className="text-sm font-semibold tabular-nums">
                       Total: {formatCurrency(
                         Object.entries(containerPrices).reduce((sum, [key, price]) => {
@@ -1924,7 +1930,7 @@ export function ShipmentDetail() {
       <ShipmentForm
         open={showForm}
         onOpenChange={setShowForm}
-        shipment={shipment}
+        shipment={shipment as unknown as { id?: string; [key: string]: unknown } | null}
         onSuccess={fetchShipment}
       />
 

@@ -11,10 +11,54 @@ export async function GET(
       where: { id },
       include: {
         teuRecords: { orderBy: { recordedAt: 'desc' } },
-        revenues: true,
+        revenues: {
+          include: {
+            customer: { select: { id: true, name: true, code: true } },
+            teuRecord: {
+              select: {
+                id: true,
+                totalContainers: true,
+                totalTEUs: true,
+                loadedTEUs: true,
+                emptyTEUs: true,
+                twentyFoot: true,
+                fortyFoot: true,
+                fortyFiveFoot: true,
+                reeferUnits: true,
+                specialUnits: true,
+                recordedAt: true,
+              },
+            },
+          },
+        },
         expenses: {
           include: {
             vendor: { select: { id: true, name: true, code: true } },
+          },
+        },
+        shipments: {
+          select: {
+            id: true,
+            shipmentNumber: true,
+            direction: true,
+            transportMode: true,
+            status: true,
+            originCountry: true,
+            destinationCountry: true,
+            vesselName: true,
+            voyageNumber: true,
+            etd: true,
+            eta: true,
+            containers: {
+              select: {
+                id: true,
+                containerNumber: true,
+                containerType: true,
+                containerSize: true,
+                quantity: true,
+                status: true,
+              },
+            },
           },
         },
       },

@@ -67,6 +67,7 @@ export async function POST(
         currency: body.currency || 'USD',
         amount,
         quantity: body.quantity || 1,
+        unitPrice: body.unitPrice || 0,
         weight: body.weight || null,
         description: body.description || null,
         invoiceNumber: body.invoiceNumber || null,

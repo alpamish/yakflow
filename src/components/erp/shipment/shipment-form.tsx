@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Ship, Plane, Truck, Loader2, Check, ChevronsUpDown, Plus } from 'lucide-react'
+import { Ship, Plane, Truck, Loader2, Check, ChevronsUpDown, Plus, Anchor } from 'lucide-react'
 
 import {
   Dialog,
@@ -53,10 +53,18 @@ interface Customer {
   code: string
 }
 
+interface VoyageOption {
+  id: string
+  voyageNumber: string
+  vesselName: string
+  status: string
+}
+
 const defaultForm = {
   direction: 'import',
   transportMode: 'sea',
   customerId: '',
+  voyageId: '',
   shipper: '',
   consignee: '',
   notifyParty: '',
@@ -82,11 +90,13 @@ const defaultForm = {
 export function ShipmentForm({ open, onOpenChange, shipment, onSuccess }: ShipmentFormProps) {
   const [form, setForm] = useState(defaultForm)
   const [customers, setCustomers] = useState<Customer[]>([])
+  const [voyages, setVoyages] = useState<VoyageOption[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [customerPopoverOpen, setCustomerPopoverOpen] = useState(false)
   const [customerSearchValue, setCustomerSearchValue] = useState('')
   const [creatingCustomer, setCreatingCustomer] = useState(false)
+  const [voyagePopoverOpen, setVoyagePopoverOpen] = useState(false)
 
   const isEditing = !!shipment?.id
 
@@ -99,11 +109,20 @@ export function ShipmentForm({ open, onOpenChange, shipment, onSuccess }: Shipme
         })
         .catch(() => {})
 
+      fetch('/api/voyages?limit=100')
+        .then((r) => r.json())
+        .then((json) => {
+          if (json.success) setVoyages(json.data || [])
+        })
+        .catch(() => {})
+
       if (shipment && shipment.id) {
+        const voyage = (shipment as Record<string, unknown>).voyage as VoyageOption | undefined
         setForm({
           direction: (shipment.direction as string) || 'import',
           transportMode: (shipment.transportMode as string) || 'sea',
           customerId: (shipment.customerId as string) || '',
+          voyageId: (shipment.voyageId as string) || (voyage?.id as string) || '',
           shipper: (shipment.shipper as string) || '',
           consignee: (shipment.consignee as string) || '',
           notifyParty: (shipment.notifyParty as string) || '',
@@ -148,6 +167,7 @@ export function ShipmentForm({ open, onOpenChange, shipment, onSuccess }: Shipme
       const payload = {
         ...form,
         customerId: form.customerId || null,
+        voyageId: form.voyageId || null,
         freeDays: form.freeDays ? parseInt(form.freeDays) : null,
         etd: form.etd || null,
         eta: form.eta || null,
@@ -538,6 +558,75 @@ export function ShipmentForm({ open, onOpenChange, shipment, onSuccess }: Shipme
                   onChange={(e) => handleChange('eta', e.target.value)}
                 />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Linked Voyage</Label>
+              <Popover open={voyagePopoverOpen} onOpenChange={(open) => {
+                setVoyagePopoverOpen(open)
+              }}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={voyagePopoverOpen}
+                    className="w-full justify-between font-normal"
+                  >
+                    {form.voyageId
+                      ? voyages.find((v) => v.id === form.voyageId)?.voyageNumber || 'Select voyage'
+                      : 'Select voyage'}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+                  <Command>
+                    <CommandInput placeholder="Search voyages..." />
+                    <CommandList>
+                      <CommandEmpty>No voyages found.</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          value="_none"
+                          onSelect={() => {
+                            handleChange('voyageId', '')
+                            setVoyagePopoverOpen(false)
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              !form.voyageId ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          No Voyage
+                        </CommandItem>
+                        {voyages.map((v) => (
+                          <CommandItem
+                            key={v.id}
+                            value={`${v.voyageNumber} ${v.vesselName}`}
+                            onSelect={() => {
+                              handleChange('voyageId', v.id)
+                              handleChange('vesselName', v.vesselName)
+                              handleChange('voyageNumber', v.voyageNumber)
+                              setVoyagePopoverOpen(false)
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                form.voyageId === v.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <div className="flex items-center gap-2">
+                              <Anchor className="size-3.5 text-muted-foreground" />
+                              <span className="font-medium">{v.voyageNumber}</span>
+                              <span className="text-muted-foreground">- {v.vesselName}</span>
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">

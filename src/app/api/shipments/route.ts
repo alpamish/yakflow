@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
         { consignee: { contains: search } },
         { vesselName: { contains: search } },
         { voyageNumber: { contains: search } },
+        { voyage: { voyageNumber: { contains: search } } },
       ]
     }
 
@@ -61,6 +62,7 @@ export async function GET(request: NextRequest) {
         where,
         include: {
           customer: { select: { id: true, name: true, code: true } },
+          voyage: { select: { id: true, voyageNumber: true, vesselName: true, status: true } },
           containers: { select: { id: true } },
           expenses: { select: { amount: true } },
           revenues: { select: { amount: true } },
@@ -136,6 +138,7 @@ export async function POST(request: NextRequest) {
         eta: body.eta ? new Date(body.eta) : null,
         vesselName: body.vesselName || null,
         voyageNumber: body.voyageNumber || null,
+        voyageId: body.voyageId || null,
         freeDays: body.freeDays || null,
         status: body.status || 'draft',
         remarks: body.remarks || null,
@@ -143,6 +146,7 @@ export async function POST(request: NextRequest) {
       },
       include: {
         customer: { select: { id: true, name: true, code: true } },
+        voyage: { select: { id: true, voyageNumber: true, vesselName: true } },
       },
     })
 

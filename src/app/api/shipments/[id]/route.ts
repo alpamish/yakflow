@@ -11,6 +11,7 @@ export async function GET(
       where: { id },
       include: {
         customer: true,
+        voyage: true,
         containers: true,
         expenses: {
           include: {
@@ -81,12 +82,14 @@ export async function PUT(
         eta: body.eta ? new Date(body.eta) : null,
         vesselName: body.vesselName ?? null,
         voyageNumber: body.voyageNumber ?? null,
+        voyageId: body.voyageId ?? null,
         freeDays: body.freeDays ?? null,
         status: body.status,
         remarks: body.remarks ?? null,
       },
       include: {
         customer: { select: { id: true, name: true, code: true } },
+        voyage: { select: { id: true, voyageNumber: true, vesselName: true } },
       },
     })
 

@@ -162,6 +162,8 @@ model Shipment {
   eta               DateTime?
   vesselName        String?
   voyageNumber      String?
+  voyageId          String?
+  voyage            Voyage?  @relation(fields: [voyageId], references: [id])
   freeDays          Int?
   status            String   @default("draft") // draft, booked, loading, in_transit, arrived, customs_clearance, delivered, cancelled
   remarks           String?
@@ -258,6 +260,7 @@ model Voyage {
   teuRecords    VoyageTEU[]
   revenues      VoyageRevenue[]
   expenses      VoyageExpense[]
+  shipments     Shipment[]
 }
 
 model VoyageTEU {
@@ -314,6 +317,7 @@ model VoyageExpense {
   currency      String   @default("USD")
   amount        Float
   quantity      Int      @default(1)
+  unitPrice     Float    @default(0)
   weight        Float?
   description   String?
   invoiceNumber String?

@@ -23,6 +23,7 @@ import {
   Check,
   Weight,
   Hash,
+  Package,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -54,6 +55,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
+import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
 import {
   Table,
@@ -135,6 +137,21 @@ function formatDate(dateStr: string | null | undefined): string {
   })
 }
 
+interface ShipmentSummary {
+  id: string
+  shipmentNumber: string
+  direction: string
+  transportMode: string
+  status: string
+  originCountry: string | null
+  destinationCountry: string | null
+  vesselName: string | null
+  voyageNumber: string | null
+  etd: string | null
+  eta: string | null
+  containers: Array<{ id: string }>
+}
+
 interface VoyageDetail {
   id: string
   voyageNumber: string
@@ -147,6 +164,7 @@ interface VoyageDetail {
   shippingLine: string | null
   status: string
   remarks: string | null
+  shipments: ShipmentSummary[]
   teuRecords: Array<{
     id: string
     totalContainers: number
@@ -220,7 +238,7 @@ interface ProfitData {
 }
 
 export function VoyageDetail() {
-  const { selectedVoyageId, goBack } = useNavigationStore()
+  const { selectedVoyageId, selectShipment, goBack } = useNavigationStore()
   const [voyage, setVoyage] = useState<VoyageDetail | null>(null)
   const [profit, setProfit] = useState<ProfitData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -265,9 +283,8 @@ export function VoyageDetail() {
   const [expenseForm, setExpenseForm] = useState({
     expenseType: 'ocean_freight',
     vendorId: '',
-    currency: '',
-    amount: '',
     quantity: '1',
+    unitPrice: '',
     weight: '',
     description: '',
     invoiceNumber: '',
@@ -477,11 +494,14 @@ export function VoyageDetail() {
     if (!selectedVoyageId) return
     setSubmitting(true)
     try {
+      const qty = Number(expenseForm.quantity) || 1
+      const unitPrice = Number(expenseForm.unitPrice) || 0
       const body = {
         ...expenseForm,
         vendorId: expenseForm.vendorId || null,
-        amount: Number(expenseForm.amount) || 0,
-        quantity: Number(expenseForm.quantity) || 1,
+        quantity: qty,
+        unitPrice,
+        amount: qty * unitPrice,
         weight: expenseForm.weight ? Number(expenseForm.weight) : null,
       }
       const res = await fetch(
@@ -498,7 +518,7 @@ export function VoyageDetail() {
       if (data.success) {
         setShowExpenseForm(false)
         setEditingExpense(null)
-        setExpenseForm({ expenseType: 'ocean_freight', vendorId: '', currency: baseCurrency, amount: '', quantity: '1', weight: '', description: '', invoiceNumber: '', paymentStatus: 'pending' })
+                setExpenseForm({ expenseType: 'ocean_freight', vendorId: '', quantity: '1', unitPrice: '', weight: '', description: '', invoiceNumber: '', paymentStatus: 'pending' })
         fetchVoyage()
       }
     } catch {
@@ -519,18 +539,18 @@ export function VoyageDetail() {
   }
 
   const fetchContainers = useCallback(async () => {
-    if (!voyage?.voyageNumber) return
+    if (!voyage?.id) return
     try {
-      const res = await fetch(`/api/shipments?voyageNumber=${encodeURIComponent(voyage.voyageNumber)}`)
+      const res = await fetch(`/api/voyages/${voyage.id}`)
       const json = await res.json()
-      if (json.success && json.data?.length > 0) {
-        const allContainers = json.data.flatMap((s: any) => s.containers || [])
+      if (json.success && json.data?.shipments?.length > 0) {
+        const allContainers = json.data.shipments.flatMap((s: any) => s.containers || [])
         setContainers(allContainers)
       }
     } catch {
       console.error('Failed to fetch containers')
     }
-  }, [voyage?.voyageNumber])
+  }, [voyage?.id])
 
   useEffect(() => {
     if (voyage?.voyageNumber) fetchContainers()
@@ -689,8 +709,9 @@ export function VoyageDetail() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="shipments">Shipments ({voyage.shipments.length})</TabsTrigger>
           <TabsTrigger value="teu">TEU</TabsTrigger>
           <TabsTrigger value="revenue">Revenue</TabsTrigger>
           <TabsTrigger value="expenses">Expenses</TabsTrigger>
@@ -850,6 +871,103 @@ export function VoyageDetail() {
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+
+        {/* Shipments Tab */}
+        <TabsContent value="shipments" className="space-y-6 mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Linked Shipments</CardTitle>
+              <CardDescription>
+                {voyage.shipments.length} shipment(s) linked to this voyage
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {voyage.shipments.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Package className="size-8 mx-auto mb-2 opacity-40" />
+                  <p>No shipments linked to this voyage yet</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Shipment #</TableHead>
+                        <TableHead>Direction</TableHead>
+                        <TableHead>Route</TableHead>
+                        <TableHead>Containers</TableHead>
+                        <TableHead>ETD / ETA</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {voyage.shipments.map((s) => {
+                        const shipmentStatusColors: Record<string, string> = {
+                          draft: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+                          booked: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400',
+                          loading: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400',
+                          in_transit: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-400',
+                          arrived: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400',
+                          customs_clearance: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
+                          delivered: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
+                          cancelled: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
+                        }
+                        const shipmentStatusLabels: Record<string, string> = {
+                          draft: 'Draft',
+                          booked: 'Booked',
+                          loading: 'Loading',
+                          in_transit: 'In Transit',
+                          arrived: 'Arrived',
+                          customs_clearance: 'Customs',
+                          delivered: 'Delivered',
+                          cancelled: 'Cancelled',
+                        }
+                        const statusLabel = shipmentStatusLabels[s.status] || s.status
+                        const statusColor = shipmentStatusColors[s.status] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                        return (
+                          <TableRow
+                            key={s.id}
+                            className="cursor-pointer hover:bg-muted/30"
+                            onClick={() => selectShipment(s.id)}
+                          >
+                            <TableCell className="font-medium text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                              {s.shipmentNumber}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className={
+                                s.direction === 'import'
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                  : 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-400'
+                              }>
+                                {s.direction === 'import' ? 'Import' : 'Export'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap text-sm">
+                              {s.originCountry || '—'} → {s.destinationCountry || '—'}
+                            </TableCell>
+                            <TableCell className="text-center font-mono text-sm">
+                              {s.containers.length}
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                              {s.etd ? format(new Date(s.etd), 'MMM dd') : '—'}
+                              <span className="mx-1">/</span>
+                              {s.eta ? format(new Date(s.eta), 'MMM dd') : '—'}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className={statusColor}>
+                                {statusLabel}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* TEU Tab */}
@@ -1193,7 +1311,7 @@ export function VoyageDetail() {
                         <TableHead className="tracking-wider text-[11px]">TYPE</TableHead>
                         <TableHead className="tracking-wider text-[11px]">TEU REF</TableHead>
                         <TableHead className="tracking-wider text-[11px]">CUSTOMER</TableHead>
-                        <TableHead className="tracking-wider text-[11px]">CURRENCY</TableHead>
+                        <TableHead className="tracking-wider text-[11px]">DESCRIPTION</TableHead>
                         <TableHead className="text-right tracking-wider text-[11px]">AMOUNT</TableHead>
                         <TableHead className="text-right tracking-wider text-[11px]">QTY</TableHead>
                         <TableHead className="text-right tracking-wider text-[11px]">WEIGHT</TableHead>
@@ -1219,8 +1337,11 @@ export function VoyageDetail() {
                               ) : '—'}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">{rev.customer?.name || '—'}</TableCell>
-                            <TableCell className="font-mono text-sm">{rev.currency}</TableCell>
-                            <TableCell className="text-right font-mono font-semibold">{rev.amount.toLocaleString()}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{rev.description || '—'}</TableCell>
+                            <TableCell className="text-right font-mono font-semibold">
+                              <span className="text-xs text-muted-foreground mr-1">{currencies.find(c => c.code === rev.currency)?.symbol || rev.currency}</span>
+                              {rev.amount.toLocaleString()}
+                            </TableCell>
                             <TableCell className="text-right font-mono">{rev.quantity}</TableCell>
                             <TableCell className="text-right font-mono text-muted-foreground">{rev.weight ? `${rev.weight} kg` : '—'}</TableCell>
                             <TableCell className="text-sm text-muted-foreground">{rev.invoiceNumber || '—'}</TableCell>
@@ -1510,7 +1631,7 @@ export function VoyageDetail() {
               </div>
               <Button onClick={() => {
                 setEditingExpense(null)
-                setExpenseForm({ expenseType: 'ocean_freight', vendorId: '', currency: baseCurrency, amount: '', quantity: '1', weight: '', description: '', invoiceNumber: '', paymentStatus: 'pending' })
+        setExpenseForm({ expenseType: 'ocean_freight', vendorId: '', quantity: '1', unitPrice: '', weight: '', description: '', invoiceNumber: '', paymentStatus: 'pending' })
                 setShowExpenseForm(true)
               }} size="sm" className="bg-amber-600 hover:bg-amber-700 text-white">
                 <Plus className="size-4 mr-2" />
@@ -1531,9 +1652,10 @@ export function VoyageDetail() {
                         <TableRow>
                           <TableHead className="tracking-wider text-[11px]">TYPE</TableHead>
                           <TableHead className="tracking-wider text-[11px]">VENDOR</TableHead>
-                          <TableHead className="tracking-wider text-[11px]">CURRENCY</TableHead>
+                          <TableHead className="tracking-wider text-[11px]">DESCRIPTION</TableHead>
                           <TableHead className="text-right tracking-wider text-[11px]">AMOUNT</TableHead>
                           <TableHead className="text-right tracking-wider text-[11px]">QTY</TableHead>
+                          <TableHead className="text-right tracking-wider text-[11px]">UNIT PRICE</TableHead>
                           <TableHead className="text-right tracking-wider text-[11px]">WEIGHT</TableHead>
                           <TableHead className="tracking-wider text-[11px]">INVOICE</TableHead>
                           <TableHead className="tracking-wider text-[11px]">STATUS</TableHead>
@@ -1549,9 +1671,13 @@ export function VoyageDetail() {
                               </span>
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">{exp.vendor?.name || '—'}</TableCell>
-                            <TableCell className="font-mono text-sm">{exp.currency}</TableCell>
-                            <TableCell className="text-right font-mono font-semibold">{exp.amount.toLocaleString()}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{exp.description || '—'}</TableCell>
+                            <TableCell className="text-right font-mono font-semibold">
+                              <span className="text-xs text-muted-foreground mr-1">{currencies.find(c => c.code === exp.currency)?.symbol || exp.currency}</span>
+                              {exp.amount.toLocaleString()}
+                            </TableCell>
                             <TableCell className="text-right font-mono">{exp.quantity}</TableCell>
+                            <TableCell className="text-right font-mono">{exp.unitPrice?.toLocaleString() || '—'}</TableCell>
                             <TableCell className="text-right font-mono text-muted-foreground">{exp.weight ? `${exp.weight} kg` : '—'}</TableCell>
                             <TableCell className="text-sm text-muted-foreground">{exp.invoiceNumber || '—'}</TableCell>
                             <TableCell>
@@ -1578,9 +1704,8 @@ export function VoyageDetail() {
                                     setExpenseForm({
                                       expenseType: exp.expenseType,
                                       vendorId: exp.vendorId || '',
-                                      currency: exp.currency,
-                                      amount: exp.amount.toString(),
                                       quantity: exp.quantity.toString(),
+                                      unitPrice: exp.unitPrice?.toString() || '',
                                       weight: exp.weight?.toString() || '',
                                       description: exp.description || '',
                                       invoiceNumber: exp.invoiceNumber || '',
@@ -1943,6 +2068,14 @@ export function VoyageDetail() {
                 { label: 'Special', qty: teuRec.specialUnits, key: 'specialUnits' },
               ].filter(r => r.qty > 0)
 
+              const updateTotal = (prices: Record<string, string>) => {
+                let total = 0
+                containerRows.forEach(r => {
+                  total += r.qty * (parseFloat(prices[r.key]) || 0)
+                })
+                setRevenueForm(p => ({ ...p, amount: total ? total.toString() : '' }))
+              }
+
               let grandTotal = 0
               containerRows.forEach(r => {
                 grandTotal += r.qty * (parseFloat(revenueContainerPrices[r.key]) || 0)
@@ -1973,7 +2106,11 @@ export function VoyageDetail() {
                               className="h-8 w-full text-center"
                               placeholder="0"
                               value={revenueContainerPrices[row.key] || ''}
-                              onChange={(e) => setRevenueContainerPrices(p => ({ ...p, [row.key]: e.target.value }))}
+                              onChange={(e) => {
+                                const newPrices = { ...revenueContainerPrices, [row.key]: e.target.value }
+                                setRevenueContainerPrices(newPrices)
+                                updateTotal(newPrices)
+                              }}
                             />
                           </div>
                           <span className="text-sm text-right font-mono font-medium tabular-nums">
@@ -1983,8 +2120,8 @@ export function VoyageDetail() {
                       )
                     })}
                     <div className="grid grid-cols-[1fr_80px_100px_110px] gap-0 items-center px-4 py-2.5 bg-emerald-100 dark:bg-emerald-900/40 border-t-2 border-emerald-300 dark:border-emerald-700 font-semibold">
-                      <span className="text-sm">Grand Total</span>
-                      <span className="text-sm text-center font-mono">{teuRec.totalContainers}</span>
+                      <span className="text-sm">Total Containers: {teuRec.totalContainers}</span>
+                      <span></span>
                       <span></span>
                       <span className="text-sm text-right font-mono text-emerald-700 dark:text-emerald-300 tabular-nums">
                         {grandTotal > 0 ? formatCurrency(grandTotal) : '—'}
@@ -2055,7 +2192,7 @@ export function VoyageDetail() {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs uppercase tracking-wider">Amount *</Label>
-                  <Input type="number" step="0.01" value={revenueForm.amount} onChange={(e) => setRevenueForm(p => ({ ...p, amount: e.target.value }))} required />
+                  <Input type="number" step="0.01" value={revenueForm.amount} onChange={(e) => setRevenueForm(p => ({ ...p, amount: e.target.value }))} required readOnly={!!selectedTeuRecordId} className={selectedTeuRecordId ? 'bg-muted' : ''} />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs uppercase tracking-wider">Quantity</Label>
@@ -2121,32 +2258,77 @@ export function VoyageDetail() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs uppercase tracking-wider">Vendor</Label>
-                <Select value={expenseForm.vendorId} onValueChange={(v) => setExpenseForm(p => ({ ...p, vendorId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select vendor" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No vendor</SelectItem>
-                    {vendors.map(v => <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+                      {expenseForm.vendorId
+                        ? vendors.find((v) => v.id === expenseForm.vendorId)?.name || 'Select vendor'
+                        : 'Select vendor'}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[var(--radix-popover-trigger-width)] max-h-[300px] overflow-y-auto p-0">
+                    <Command>
+                      <CommandInput placeholder="Search vendors..." />
+                      <CommandList className="max-h-[260px]">
+                        <CommandEmpty>
+                          <Button
+                            variant="ghost"
+                            className="w-full justify-start gap-2 font-normal"
+                            onClick={async () => {
+                              const searchInput = document.querySelector<HTMLInputElement>('[cmdk-input]')
+                              const name = searchInput?.value || ''
+                              if (!name) return
+                              try {
+                                const res = await fetch('/api/vendors', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ name }),
+                                })
+                                const json = await res.json()
+                                if (json.success) {
+                                  setVendors(prev => [...prev, json.data])
+                                  setExpenseForm(p => ({ ...p, vendorId: json.data.id }))
+                                }
+                              } catch (e) {
+                                console.error('Failed to create vendor', e)
+                              }
+                            }}
+                          >
+                            <Plus className="h-4 w-4" />
+                            Create vendor
+                          </Button>
+                        </CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem value="_none" onSelect={() => setExpenseForm(p => ({ ...p, vendorId: '' }))}>
+                            <Check className={cn('mr-2 h-4 w-4', !expenseForm.vendorId ? 'opacity-100' : 'opacity-0')} />
+                            No Vendor
+                          </CommandItem>
+                          {vendors.map(v => (
+                            <CommandItem key={v.id} value={`${v.name} ${v.code}`} onSelect={() => setExpenseForm(p => ({ ...p, vendorId: v.id }))}>
+                              <Check className={cn('mr-2 h-4 w-4', expenseForm.vendorId === v.id ? 'opacity-100' : 'opacity-0')} />
+                              {v.name} ({v.code})
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
             <div className="grid grid-cols-4 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs uppercase tracking-wider">Currency</Label>
-                <Select value={expenseForm.currency || baseCurrency} onValueChange={(v) => setExpenseForm(p => ({ ...p, currency: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {currencies.map(c => <SelectItem key={c.code} value={c.code}>{c.code}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs uppercase tracking-wider">Amount *</Label>
-                <Input type="number" step="0.01" value={expenseForm.amount} onChange={(e) => setExpenseForm(p => ({ ...p, amount: e.target.value }))} required />
-              </div>
-              <div className="space-y-1.5">
                 <Label className="text-xs uppercase tracking-wider">Quantity</Label>
                 <Input type="number" min="1" value={expenseForm.quantity} onChange={(e) => setExpenseForm(p => ({ ...p, quantity: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase tracking-wider">Unit Price *</Label>
+                <Input type="number" step="0.01" value={expenseForm.unitPrice} onChange={(e) => setExpenseForm(p => ({ ...p, unitPrice: e.target.value }))} required />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase tracking-wider">Amount</Label>
+                <Input type="number" step="0.01" value={((Number(expenseForm.quantity) || 0) * (Number(expenseForm.unitPrice) || 0)) || ''} readOnly className="bg-muted" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs uppercase tracking-wider">Weight (kg)</Label>
@@ -2177,7 +2359,7 @@ export function VoyageDetail() {
           </div>
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={() => { setShowExpenseForm(false); setEditingExpense(null) }}>Cancel</Button>
-            <Button onClick={handleAddExpense} disabled={submitting || !expenseForm.amount} className="bg-amber-600 hover:bg-amber-700 text-white">
+            <Button onClick={handleAddExpense} disabled={submitting || !Number(expenseForm.quantity) || !Number(expenseForm.unitPrice)} className="bg-amber-600 hover:bg-amber-700 text-white">
               {submitting && <Loader2 className="size-4 mr-2 animate-spin" />}
               {editingExpense ? 'Update Expense' : 'Add Expense'}
             </Button>

@@ -31,6 +31,7 @@ export async function PATCH(
     if (body.currency !== undefined) updateData.currency = body.currency
     if (body.amount !== undefined) updateData.amount = body.amount
     if (body.quantity !== undefined) updateData.quantity = body.quantity
+    if (body.unitPrice !== undefined) updateData.unitPrice = body.unitPrice
     if (body.weight !== undefined) updateData.weight = body.weight
     if (body.description !== undefined) updateData.description = body.description || null
     if (body.invoiceNumber !== undefined) updateData.invoiceNumber = body.invoiceNumber || null

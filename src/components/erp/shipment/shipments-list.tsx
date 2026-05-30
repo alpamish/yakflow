@@ -66,6 +66,8 @@ interface Shipment {
   transportMode: string
   customerId: string | null
   customer: { id: string; name: string; code: string } | null
+  voyageId: string | null
+  voyage: { id: string; voyageNumber: string; vesselName: string; status: string } | null
   originCountry: string | null
   destinationCountry: string | null
   etd: string | null
@@ -467,8 +469,8 @@ export function ShipmentsList() {
                           </div>
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                          {s.vesselName || '—'}
-                          {s.voyageNumber ? ` / ${s.voyageNumber}` : ''}
+                          {s.voyage?.vesselName || s.vesselName || '—'}
+                          {s.voyage?.voyageNumber || s.voyageNumber ? ` / ${s.voyage?.voyageNumber || s.voyageNumber}` : ''}
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -573,7 +575,7 @@ export function ShipmentsList() {
           setShowForm(open)
           if (!open) setEditingShipment(null)
         }}
-        shipment={editingShipment}
+        shipment={editingShipment as unknown as { id?: string; [key: string]: unknown } | null}
         onSuccess={handleFormSuccess}
       />
 

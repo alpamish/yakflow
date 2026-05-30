@@ -360,6 +360,7 @@ async function main() {
         etd: parseDate(s.etd) || parseDate(data.voyage.etd),
         vesselName: s.vesselName,
         voyageNumber: s.voyageNumber,
+        voyageId: voyage.id,
         freeDays: s.freeDays || 14,
         status,
         remarks: remarks || null,
