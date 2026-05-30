@@ -159,6 +159,7 @@ interface VoyageDetail {
     reeferUnits: number
     specialUnits: number
     teuUtilization: number | null
+    notes: string | null
     recordedAt: string
   }>
   revenues: Array<{
@@ -166,6 +167,20 @@ interface VoyageDetail {
     revenueType: string
     customerId: string | null
     customer: { id: string; name: string; code: string } | null
+    teuRecordId: string | null
+    teuRecord: {
+      id: string
+      totalContainers: number
+      totalTEUs: number
+      loadedTEUs: number
+      emptyTEUs: number
+      twentyFoot: number
+      fortyFoot: number
+      fortyFiveFoot: number
+      reeferUnits: number
+      specialUnits: number
+      recordedAt: string
+    } | null
     currency: string
     amount: number
     quantity: number
@@ -224,6 +239,7 @@ export function VoyageDetail() {
     fortyFiveFoot: '',
     reeferUnits: '',
     specialUnits: '',
+    notes: '',
   })
 
   // Revenue form
@@ -268,6 +284,10 @@ export function VoyageDetail() {
   const [deletingItem, setDeletingItem] = useState<{ type: string; id: string } | null>(null)
   const [containerPrices, setContainerPrices] = useState<Record<string, string>>({})
   const [containers, setContainers] = useState<Array<{ id: string; containerNumber: string; containerType: string; containerSize: string; quantity: number; status: string }>>([])
+
+  // Revenue form with TEU reference
+  const [selectedTeuRecordId, setSelectedTeuRecordId] = useState<string>('')
+  const [revenueContainerPrices, setRevenueContainerPrices] = useState<Record<string, string>>({})
 
   const formatCurrency = (amount: number): string => {
     return new Intl.NumberFormat('en-US', {
@@ -358,46 +378,29 @@ export function VoyageDetail() {
       .catch(() => {})
   }, [fetchVendors, fetchCustomers])
 
-  const handleAddTeu = async () => {
-    if (!selectedVoyageId) return
-    setSubmitting(true)
-    try {
-      const res = await fetch(`/api/voyages/${selectedVoyageId}/teu`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          totalContainers: Number(teuForm.totalContainers) || 0,
-          totalTEUs: Number(teuForm.totalTEUs) || 0,
-          loadedTEUs: Number(teuForm.loadedTEUs) || 0,
-          emptyTEUs: Number(teuForm.emptyTEUs) || 0,
-          twentyFoot: Number(teuForm.twentyFoot) || 0,
-          fortyFoot: Number(teuForm.fortyFoot) || 0,
-          fortyFiveFoot: Number(teuForm.fortyFiveFoot) || 0,
-          reeferUnits: Number(teuForm.reeferUnits) || 0,
-          specialUnits: Number(teuForm.specialUnits) || 0,
-        }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        setShowTeuForm(false)
-        setTeuForm({ totalContainers: '', totalTEUs: '', loadedTEUs: '', emptyTEUs: '', twentyFoot: '', fortyFoot: '', fortyFiveFoot: '', reeferUnits: '', specialUnits: '' })
-        fetchVoyage()
-      }
-    } catch {
-      console.error('Failed to add TEU record')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
   const handleAddRevenue = async () => {
     if (!selectedVoyageId) return
     setSubmitting(true)
     try {
+      // Calculate amount from container pricing if a TEU record is selected
+      let computedAmount = Number(revenueForm.amount) || 0
+      if (selectedTeuRecordId) {
+        const teuRec = voyage?.teuRecords.find(r => r.id === selectedTeuRecordId)
+        if (teuRec) {
+          computedAmount =
+            (teuRec.twentyFoot * (parseFloat(revenueContainerPrices.twentyFoot) || 0)) +
+            (teuRec.fortyFoot * (parseFloat(revenueContainerPrices.fortyFoot) || 0)) +
+            (teuRec.fortyFiveFoot * (parseFloat(revenueContainerPrices.fortyFiveFoot) || 0)) +
+            (teuRec.reeferUnits * (parseFloat(revenueContainerPrices.reeferUnits) || 0)) +
+            (teuRec.specialUnits * (parseFloat(revenueContainerPrices.specialUnits) || 0))
+        }
+      }
+
       const body = {
         ...revenueForm,
+        teuRecordId: selectedTeuRecordId || null,
         customerId: revenueForm.customerId || null,
-        amount: Number(revenueForm.amount) || 0,
+        amount: computedAmount,
         quantity: Number(revenueForm.quantity) || 1,
         weight: revenueForm.weight ? Number(revenueForm.weight) : null,
         dueDate: revenueForm.dueDate || null,
@@ -417,11 +420,54 @@ export function VoyageDetail() {
         setShowRevenueForm(false)
         setEditingRevenue(null)
         setContainerPrices({})
+        setSelectedTeuRecordId('')
+        setRevenueContainerPrices({})
         setRevenueForm({ revenueType: 'freight_income', customerId: '', currency: baseCurrency, amount: '', quantity: '1', weight: '', description: '', invoiceNumber: '', paymentStatus: 'pending', dueDate: '' })
         fetchVoyage()
       }
     } catch {
       console.error('Failed to add revenue')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleAddTeu = async () => {
+    if (!selectedVoyageId) return
+    setSubmitting(true)
+    try {
+      const twentyFoot = Number(teuForm.twentyFoot) || 0
+      const fortyFoot = Number(teuForm.fortyFoot) || 0
+      const fortyFiveFoot = Number(teuForm.fortyFiveFoot) || 0
+      const reeferUnits = Number(teuForm.reeferUnits) || 0
+      const specialUnits = Number(teuForm.specialUnits) || 0
+      const totalContainers = twentyFoot + fortyFoot + fortyFiveFoot + reeferUnits + specialUnits
+      const totalTEUs = twentyFoot + (fortyFoot * 2) + (fortyFiveFoot * 2) + (reeferUnits * 2) + specialUnits
+
+      const teuRes = await fetch(`/api/voyages/${selectedVoyageId}/teu`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          totalContainers,
+          totalTEUs,
+          loadedTEUs: Number(teuForm.loadedTEUs) || 0,
+          emptyTEUs: Number(teuForm.emptyTEUs) || 0,
+          twentyFoot,
+          fortyFoot,
+          fortyFiveFoot,
+          reeferUnits,
+          specialUnits,
+          notes: teuForm.notes || null,
+        }),
+      })
+      const teuData = await teuRes.json()
+      if (!teuData.success) throw new Error('Failed to add TEU record')
+
+      setShowTeuForm(false)
+      setTeuForm({ totalContainers: '', totalTEUs: '', loadedTEUs: '', emptyTEUs: '', twentyFoot: '', fortyFoot: '', fortyFiveFoot: '', reeferUnits: '', specialUnits: '', notes: '' })
+      fetchVoyage()
+    } catch (err) {
+      console.error('Failed to add TEU record:', err)
     } finally {
       setSubmitting(false)
     }
@@ -1123,6 +1169,8 @@ export function VoyageDetail() {
               <Button onClick={() => {
                 setEditingRevenue(null)
                 setContainerPrices({})
+                setSelectedTeuRecordId('')
+                setRevenueContainerPrices({})
                 setRevenueForm({ revenueType: 'freight_income', customerId: '', currency: baseCurrency, amount: '', quantity: '1', weight: '', description: '', invoiceNumber: '', paymentStatus: 'pending', dueDate: '' })
                 setShowRevenueForm(true)
               }} size="sm" className="bg-amber-600 hover:bg-amber-700 text-white">
@@ -1140,20 +1188,21 @@ export function VoyageDetail() {
                 <>
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="tracking-wider text-[11px]">TYPE</TableHead>
-                          <TableHead className="tracking-wider text-[11px]">CUSTOMER</TableHead>
-                          <TableHead className="tracking-wider text-[11px]">CURRENCY</TableHead>
-                          <TableHead className="text-right tracking-wider text-[11px]">AMOUNT</TableHead>
-                          <TableHead className="text-right tracking-wider text-[11px]">QTY</TableHead>
-                          <TableHead className="text-right tracking-wider text-[11px]">WEIGHT</TableHead>
-                          <TableHead className="tracking-wider text-[11px]">INVOICE</TableHead>
-                          <TableHead className="tracking-wider text-[11px]">DUE DATE</TableHead>
-                          <TableHead className="tracking-wider text-[11px]">STATUS</TableHead>
-                          <TableHead className="w-[70px]"></TableHead>
-                        </TableRow>
-                      </TableHeader>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="tracking-wider text-[11px]">TYPE</TableHead>
+                        <TableHead className="tracking-wider text-[11px]">TEU REF</TableHead>
+                        <TableHead className="tracking-wider text-[11px]">CUSTOMER</TableHead>
+                        <TableHead className="tracking-wider text-[11px]">CURRENCY</TableHead>
+                        <TableHead className="text-right tracking-wider text-[11px]">AMOUNT</TableHead>
+                        <TableHead className="text-right tracking-wider text-[11px]">QTY</TableHead>
+                        <TableHead className="text-right tracking-wider text-[11px]">WEIGHT</TableHead>
+                        <TableHead className="tracking-wider text-[11px]">INVOICE</TableHead>
+                        <TableHead className="tracking-wider text-[11px]">DUE DATE</TableHead>
+                        <TableHead className="tracking-wider text-[11px]">STATUS</TableHead>
+                        <TableHead className="w-[70px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
                       <TableBody>
                         {voyage.revenues.map((rev) => (
                           <TableRow key={rev.id}>
@@ -1161,6 +1210,13 @@ export function VoyageDetail() {
                               <span className="text-xs font-medium uppercase tracking-wide">
                                 {REVENUE_TYPES.find(t => t.value === rev.revenueType)?.label || rev.revenueType}
                               </span>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {rev.teuRecord ? (
+                                <span className="font-mono">
+                                  {formatDate(rev.teuRecord.recordedAt)} ({rev.teuRecord.totalTEUs} TEU)
+                                </span>
+                              ) : '—'}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">{rev.customer?.name || '—'}</TableCell>
                             <TableCell className="font-mono text-sm">{rev.currency}</TableCell>
@@ -1191,6 +1247,8 @@ export function VoyageDetail() {
                                   className="size-7"
                                   onClick={() => {
                                     setEditingRevenue(rev)
+                                    setSelectedTeuRecordId(rev.teuRecordId || '')
+                                    setRevenueContainerPrices({ twentyFoot: '', fortyFoot: '', fortyFiveFoot: '', reeferUnits: '', specialUnits: '' })
                                     setRevenueForm({
                                       revenueType: rev.revenueType,
                                       customerId: rev.customerId || '',
@@ -1732,237 +1790,311 @@ export function VoyageDetail() {
         />
       )}
 
-      {/* TEU Form Dialog */}
-      <Dialog open={showTeuForm} onOpenChange={setShowTeuForm}>
-        <DialogContent className="max-w-lg">
+      {/* Standalone TEU Form Dialog */}
+      <Dialog open={showTeuForm} onOpenChange={(open) => {
+        setShowTeuForm(open)
+        if (!open) {
+          setTeuForm({ totalContainers: '', totalTEUs: '', loadedTEUs: '', emptyTEUs: '', twentyFoot: '', fortyFoot: '', fortyFiveFoot: '', reeferUnits: '', specialUnits: '', notes: '' })
+        }
+      }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add TEU Record</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-4 py-4">
-            <div className="space-y-1.5">
-              <Label>Total Containers</Label>
-              <Input type="number" value={teuForm.totalContainers} onChange={(e) => setTeuForm(p => ({ ...p, totalContainers: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Total TEUs</Label>
-              <Input type="number" value={teuForm.totalTEUs} onChange={(e) => setTeuForm(p => ({ ...p, totalTEUs: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Loaded TEUs</Label>
-              <Input type="number" value={teuForm.loadedTEUs} onChange={(e) => setTeuForm(p => ({ ...p, loadedTEUs: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Empty TEUs</Label>
-              <Input type="number" value={teuForm.emptyTEUs} onChange={(e) => setTeuForm(p => ({ ...p, emptyTEUs: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>20ft</Label>
-              <Input type="number" value={teuForm.twentyFoot} onChange={(e) => setTeuForm(p => ({ ...p, twentyFoot: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>40ft</Label>
-              <Input type="number" value={teuForm.fortyFoot} onChange={(e) => setTeuForm(p => ({ ...p, fortyFoot: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>45ft</Label>
-              <Input type="number" value={teuForm.fortyFiveFoot} onChange={(e) => setTeuForm(p => ({ ...p, fortyFiveFoot: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Reefer Units</Label>
-              <Input type="number" value={teuForm.reeferUnits} onChange={(e) => setTeuForm(p => ({ ...p, reeferUnits: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5 col-span-2">
-              <Label>Special Units</Label>
-              <Input type="number" value={teuForm.specialUnits} onChange={(e) => setTeuForm(p => ({ ...p, specialUnits: e.target.value }))} />
-            </div>
-          </div>
+          {(() => {
+            const twentyFoot = Number(teuForm.twentyFoot) || 0
+            const fortyFoot = Number(teuForm.fortyFoot) || 0
+            const fortyFiveFoot = Number(teuForm.fortyFiveFoot) || 0
+            const reeferUnits = Number(teuForm.reeferUnits) || 0
+            const specialUnits = Number(teuForm.specialUnits) || 0
+            const totalContainers = twentyFoot + fortyFoot + fortyFiveFoot + reeferUnits + specialUnits
+            const totalTEUs = twentyFoot + (fortyFoot * 2) + (fortyFiveFoot * 2) + (reeferUnits * 2) + specialUnits
+
+            return (
+              <div className="space-y-5 py-2">
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold tracking-wider uppercase text-muted-foreground">Container Breakdown</h4>
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="grid grid-cols-[1fr_100px] gap-0 bg-amber-50 dark:bg-amber-950/30 px-4 py-2 border-b">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-200">Type</span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-200 text-center">Quantity</span>
+                    </div>
+                    {([
+                      { label: '20ft', key: 'twentyFoot' as const },
+                      { label: '40ft', key: 'fortyFoot' as const },
+                      { label: '45ft', key: 'fortyFiveFoot' as const },
+                      { label: 'Reefer', key: 'reeferUnits' as const },
+                      { label: 'Special', key: 'specialUnits' as const },
+                    ] as const).map((row, idx) => (
+                      <div key={row.label} className={`grid grid-cols-[1fr_100px] gap-0 items-center px-4 py-2 ${idx % 2 === 0 ? 'bg-muted/30' : 'bg-muted/10'} border-b last:border-b-0`}>
+                        <span className="text-sm font-medium">{row.label}</span>
+                        <div className="flex justify-center">
+                          <Input
+                            type="number"
+                            min="0"
+                            className="h-8 w-full text-center"
+                            value={teuForm[row.key]}
+                            onChange={(e) => setTeuForm(p => ({ ...p, [row.key]: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    <div className="grid grid-cols-[1fr_100px] gap-0 items-center px-4 py-2.5 bg-amber-100 dark:bg-amber-900/40 border-t-2 border-amber-300 dark:border-amber-700 font-semibold">
+                      <span className="text-sm">Total Containers</span>
+                      <span className="text-sm text-center font-mono">{totalContainers}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold tracking-wider uppercase text-muted-foreground">TEU Summary</h4>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs uppercase tracking-wider">Total Containers</Label>
+                      <Input type="number" value={totalContainers} readOnly className="bg-muted font-semibold" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs uppercase tracking-wider">Total TEUs</Label>
+                      <Input type="number" value={totalTEUs} readOnly className="bg-muted font-semibold" />
+                    </div>
+                    <div></div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs uppercase tracking-wider">Loaded TEUs</Label>
+                      <Input type="number" value={teuForm.loadedTEUs} onChange={(e) => setTeuForm(p => ({ ...p, loadedTEUs: e.target.value }))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs uppercase tracking-wider">Empty TEUs</Label>
+                      <Input type="number" value={teuForm.emptyTEUs} onChange={(e) => setTeuForm(p => ({ ...p, emptyTEUs: e.target.value }))} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs uppercase tracking-wider">Notes</Label>
+                  <Textarea value={teuForm.notes} onChange={(e) => setTeuForm(p => ({ ...p, notes: e.target.value }))} rows={2} placeholder="Operational remarks..." />
+                </div>
+              </div>
+            )
+          })()}
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={() => setShowTeuForm(false)}>Cancel</Button>
             <Button onClick={handleAddTeu} disabled={submitting} className="bg-amber-600 hover:bg-amber-700 text-white">
               {submitting && <Loader2 className="size-4 mr-2 animate-spin" />}
-              Add Record
+              Add TEU Record
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Revenue Form Dialog */}
-      <Dialog open={showRevenueForm} onOpenChange={(open) => { if (!open) { setShowRevenueForm(false); setEditingRevenue(null) } }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <Dialog open={showRevenueForm} onOpenChange={(open) => {
+        if (!open) {
+          setShowRevenueForm(false)
+          setEditingRevenue(null)
+          setContainerPrices({})
+          setSelectedTeuRecordId('')
+          setRevenueContainerPrices({})
+        }
+      }}>
+        <DialogContent className="sm:max-w-3xl max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingRevenue ? 'Edit Revenue' : 'Add Revenue'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            {/* Container Pricing */}
-            {!editingRevenue && containers.length > 0 && (
-              <div className="border rounded-lg p-4 space-y-3">
-                <h4 className="text-sm font-semibold tracking-wider uppercase">Container Pricing</h4>
-                {Object.entries(
-                  containers.reduce((acc, c) => {
-                    const key = `${c.containerType}|${c.status}`
-                    acc[key] = (acc[key] || 0) + (c.quantity || 1)
-                    return acc
-                  }, {} as Record<string, number>)
-                ).map(([key, qty]) => {
-                  const [type, status] = key.split('|')
-                  const price = parseFloat(containerPrices[key] || '0') || 0
-                  const subtotal = qty * price
-                  return (
-                    <div key={key} className="grid grid-cols-[1fr_auto_auto_1fr_auto] gap-2 items-center">
-                      <span className="text-sm font-medium">{type}</span>
-                      <Badge variant="secondary" className="text-xs">{status}</Badge>
-                      <span className="text-sm text-muted-foreground">×{qty}</span>
-                      <Input
-                        type="number"
-                        placeholder="Price"
-                        value={containerPrices[key] || ''}
-                        onChange={(e) => {
-                          const v = e.target.value
-                          const newPrices = { ...containerPrices, [key]: v }
-                          setContainerPrices(newPrices)
-                          const groups = containers.reduce((acc, c) => {
-                            const k = `${c.containerType}|${c.status}`
-                            acc[k] = (acc[k] || 0) + (c.quantity || 1)
-                            return acc
-                          }, {} as Record<string, number>)
-                          const total = Object.entries(newPrices).reduce((sum, [k, p]) => {
-                            return sum + (groups[k] || 0) * (parseFloat(p || '0') || 0)
-                          }, 0)
-                          setRevenueForm((prev) => ({ ...prev, amount: total ? total.toString() : '' }))
-                        }}
-                      />
-                      <span className="text-sm text-right font-medium tabular-nums">
-                        {formatCurrency(subtotal)}
+          <div className="space-y-5 py-2">
+            {/* TEU Record Selector */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold tracking-wider uppercase text-muted-foreground">TEU Record Reference</h4>
+              {voyage?.teuRecords.length === 0 ? (
+                <div className="text-center py-4 text-muted-foreground text-sm border rounded-lg bg-muted/20">
+                  No TEU records found. Create a TEU record first.
+                </div>
+              ) : (
+                <Select
+                  value={selectedTeuRecordId}
+                  onValueChange={(v) => {
+                    setSelectedTeuRecordId(v)
+                    setRevenueContainerPrices({ twentyFoot: '', fortyFoot: '', fortyFiveFoot: '', reeferUnits: '', specialUnits: '' })
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a TEU record to reference..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {voyage?.teuRecords.map((rec) => (
+                      <SelectItem key={rec.id} value={rec.id}>
+                        {formatDate(rec.recordedAt)} — {rec.totalTEUs} TEUs ({rec.totalContainers} containers: {rec.twentyFoot}×20ft, {rec.fortyFoot}×40ft, {rec.fortyFiveFoot}×45ft, {rec.reeferUnits}×Reefer, {rec.specialUnits}×Special)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            {/* Container Pricing Grid — shown when a TEU record is selected */}
+            {selectedTeuRecordId && (() => {
+              const teuRec = voyage?.teuRecords.find(r => r.id === selectedTeuRecordId)
+              if (!teuRec) return null
+
+              const containerRows = [
+                { label: '20ft', qty: teuRec.twentyFoot, key: 'twentyFoot' },
+                { label: '40ft', qty: teuRec.fortyFoot, key: 'fortyFoot' },
+                { label: '45ft', qty: teuRec.fortyFiveFoot, key: 'fortyFiveFoot' },
+                { label: 'Reefer', qty: teuRec.reeferUnits, key: 'reeferUnits' },
+                { label: 'Special', qty: teuRec.specialUnits, key: 'specialUnits' },
+              ].filter(r => r.qty > 0)
+
+              let grandTotal = 0
+              containerRows.forEach(r => {
+                grandTotal += r.qty * (parseFloat(revenueContainerPrices[r.key]) || 0)
+              })
+
+              return (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold tracking-wider uppercase text-muted-foreground">Container Pricing</h4>
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="grid grid-cols-[1fr_80px_100px_110px] gap-0 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-2 border-b">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-emerald-800 dark:text-emerald-200">Type</span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-emerald-800 dark:text-emerald-200 text-center">Qty</span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-emerald-800 dark:text-emerald-200 text-center">Price</span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-emerald-800 dark:text-emerald-200 text-right">Subtotal</span>
+                    </div>
+                    {containerRows.map((row, idx) => {
+                      const price = parseFloat(revenueContainerPrices[row.key]) || 0
+                      const subtotal = row.qty * price
+                      return (
+                        <div key={row.label} className={`grid grid-cols-[1fr_80px_100px_110px] gap-0 items-center px-4 py-2 ${idx % 2 === 0 ? 'bg-muted/30' : 'bg-muted/10'} border-b last:border-b-0`}>
+                          <span className="text-sm font-medium">{row.label}</span>
+                          <span className="text-sm text-center font-mono">{row.qty}</span>
+                          <div className="flex justify-center">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="h-8 w-full text-center"
+                              placeholder="0"
+                              value={revenueContainerPrices[row.key] || ''}
+                              onChange={(e) => setRevenueContainerPrices(p => ({ ...p, [row.key]: e.target.value }))}
+                            />
+                          </div>
+                          <span className="text-sm text-right font-mono font-medium tabular-nums">
+                            {subtotal > 0 ? formatCurrency(subtotal) : '—'}
+                          </span>
+                        </div>
+                      )
+                    })}
+                    <div className="grid grid-cols-[1fr_80px_100px_110px] gap-0 items-center px-4 py-2.5 bg-emerald-100 dark:bg-emerald-900/40 border-t-2 border-emerald-300 dark:border-emerald-700 font-semibold">
+                      <span className="text-sm">Grand Total</span>
+                      <span className="text-sm text-center font-mono">{teuRec.totalContainers}</span>
+                      <span></span>
+                      <span className="text-sm text-right font-mono text-emerald-700 dark:text-emerald-300 tabular-nums">
+                        {grandTotal > 0 ? formatCurrency(grandTotal) : '—'}
                       </span>
                     </div>
-                  )
-                })}
-                <div className="flex justify-end pt-2 border-t">
-                  <span className="text-sm font-semibold tabular-nums">
-                    Total: {formatCurrency(
-                      Object.entries(containerPrices).reduce((sum, [key, price]) => {
-                        const qty = containers.reduce((s, c) => s + (`${c.containerType}|${c.status}` === key ? (c.quantity || 1) : 0), 0)
-                        return sum + qty * (parseFloat(price || '0') || 0)
-                      }, 0)
-                    )}
-                  </span>
+                  </div>
+                </div>
+              )
+            })()}
+
+            <Separator />
+
+            {/* Revenue Metadata */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold tracking-wider uppercase text-muted-foreground">Revenue Details</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs uppercase tracking-wider">Revenue Type</Label>
+                  <ChargeTypeCombobox
+                    type="revenue"
+                    value={revenueForm.revenueType}
+                    onValueChange={(v) => setRevenueForm(p => ({ ...p, revenueType: v }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs uppercase tracking-wider">Customer</Label>
+                  <Popover open={customerPopoverOpen} onOpenChange={setCustomerPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" role="combobox" aria-expanded={customerPopoverOpen} className="w-full justify-between font-normal">
+                        {revenueForm.customerId
+                          ? customers.find((c) => c.id === revenueForm.customerId)?.name || 'Select customer'
+                          : 'Select customer'}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] max-h-[300px] overflow-y-auto p-0">
+                      <Command>
+                        <CommandInput placeholder="Search customers..." />
+                        <CommandList className="max-h-[260px]">
+                          <CommandEmpty>No customers found.</CommandEmpty>
+                          <CommandGroup>
+                            <CommandItem value="_none" onSelect={() => { setRevenueForm({ ...revenueForm, customerId: '' }); setCustomerPopoverOpen(false) }}>
+                              <Check className={cn('mr-2 h-4 w-4', !revenueForm.customerId ? 'opacity-100' : 'opacity-0')} />
+                              No Customer
+                            </CommandItem>
+                            {customers.map((c) => (
+                              <CommandItem key={c.id} value={`${c.name} ${c.code}`} onSelect={() => { setRevenueForm({ ...revenueForm, customerId: c.id }); setCustomerPopoverOpen(false) }}>
+                                <Check className={cn('mr-2 h-4 w-4', revenueForm.customerId === c.id ? 'opacity-100' : 'opacity-0')} />
+                                {c.name} ({c.code})
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs uppercase tracking-wider">Revenue Type</Label>
-                <Select value={revenueForm.revenueType} onValueChange={(v) => setRevenueForm(p => ({ ...p, revenueType: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {REVENUE_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-4 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs uppercase tracking-wider">Currency</Label>
+                  <Select value={revenueForm.currency || baseCurrency} onValueChange={(v) => setRevenueForm(p => ({ ...p, currency: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {currencies.map(c => <SelectItem key={c.code} value={c.code}>{c.code}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs uppercase tracking-wider">Amount *</Label>
+                  <Input type="number" step="0.01" value={revenueForm.amount} onChange={(e) => setRevenueForm(p => ({ ...p, amount: e.target.value }))} required />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs uppercase tracking-wider">Quantity</Label>
+                  <Input type="number" min="1" value={revenueForm.quantity} onChange={(e) => setRevenueForm(p => ({ ...p, quantity: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs uppercase tracking-wider">Weight (kg)</Label>
+                  <Input type="number" step="0.1" value={revenueForm.weight} onChange={(e) => setRevenueForm(p => ({ ...p, weight: e.target.value }))} />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs uppercase tracking-wider">Invoice Number</Label>
+                  <Input value={revenueForm.invoiceNumber} onChange={(e) => setRevenueForm(p => ({ ...p, invoiceNumber: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs uppercase tracking-wider">Due Date</Label>
+                  <Input type="date" value={revenueForm.dueDate} onChange={(e) => setRevenueForm(p => ({ ...p, dueDate: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs uppercase tracking-wider">Payment Status</Label>
+                  <Select value={revenueForm.paymentStatus} onValueChange={(v) => setRevenueForm(p => ({ ...p, paymentStatus: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="partial">Partial</SelectItem>
+                      <SelectItem value="paid">Paid</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs uppercase tracking-wider">Customer</Label>
-                <Popover open={customerPopoverOpen} onOpenChange={setCustomerPopoverOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={customerPopoverOpen}
-                      className="w-full justify-between font-normal"
-                    >
-                      {revenueForm.customerId
-                        ? customers.find((c) => c.id === revenueForm.customerId)?.name || 'Select customer'
-                        : 'Select customer'}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[var(--radix-popover-trigger-width)] max-h-[300px] overflow-y-auto p-0">
-                    <Command>
-                      <CommandInput placeholder="Search customers..." />
-                      <CommandList className="max-h-[260px]">
-                        <CommandEmpty>No customers found.</CommandEmpty>
-                        <CommandGroup>
-                          <CommandItem
-                            value="_none"
-                            onSelect={() => {
-                              setRevenueForm({ ...revenueForm, customerId: '' })
-                              setCustomerPopoverOpen(false)
-                            }}
-                          >
-                            <Check className={cn('mr-2 h-4 w-4', !revenueForm.customerId ? 'opacity-100' : 'opacity-0')} />
-                            No Customer
-                          </CommandItem>
-                          {customers.map((c) => (
-                            <CommandItem
-                              key={c.id}
-                              value={`${c.name} ${c.code}`}
-                              onSelect={() => {
-                                setRevenueForm({ ...revenueForm, customerId: c.id })
-                                setCustomerPopoverOpen(false)
-                              }}
-                            >
-                              <Check className={cn('mr-2 h-4 w-4', revenueForm.customerId === c.id ? 'opacity-100' : 'opacity-0')} />
-                              {c.name} ({c.code})
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+                <Label className="text-xs uppercase tracking-wider">Description</Label>
+                <Textarea value={revenueForm.description} onChange={(e) => setRevenueForm(p => ({ ...p, description: e.target.value }))} rows={2} />
               </div>
-            </div>
-            <div className="grid grid-cols-4 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs uppercase tracking-wider">Currency</Label>
-                <Select value={revenueForm.currency || baseCurrency} onValueChange={(v) => setRevenueForm(p => ({ ...p, currency: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {currencies.map(c => <SelectItem key={c.code} value={c.code}>{c.code}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs uppercase tracking-wider">Amount *</Label>
-                <Input type="number" step="0.01" value={revenueForm.amount} onChange={(e) => setRevenueForm(p => ({ ...p, amount: e.target.value }))} required />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs uppercase tracking-wider">Quantity</Label>
-                <Input type="number" min="1" value={revenueForm.quantity} onChange={(e) => setRevenueForm(p => ({ ...p, quantity: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs uppercase tracking-wider">Weight (kg)</Label>
-                <Input type="number" step="0.1" value={revenueForm.weight} onChange={(e) => setRevenueForm(p => ({ ...p, weight: e.target.value }))} />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs uppercase tracking-wider">Invoice Number</Label>
-                <Input value={revenueForm.invoiceNumber} onChange={(e) => setRevenueForm(p => ({ ...p, invoiceNumber: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs uppercase tracking-wider">Due Date</Label>
-                <Input type="date" value={revenueForm.dueDate} onChange={(e) => setRevenueForm(p => ({ ...p, dueDate: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs uppercase tracking-wider">Payment Status</Label>
-                <Select value={revenueForm.paymentStatus} onValueChange={(v) => setRevenueForm(p => ({ ...p, paymentStatus: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="partial">Partial</SelectItem>
-                    <SelectItem value="paid">Paid</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs uppercase tracking-wider">Description</Label>
-              <Textarea value={revenueForm.description} onChange={(e) => setRevenueForm(p => ({ ...p, description: e.target.value }))} rows={2} />
             </div>
           </div>
           <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => { setShowRevenueForm(false); setEditingRevenue(null); setContainerPrices({}) }}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setShowRevenueForm(false); setEditingRevenue(null); setContainerPrices({}); setSelectedTeuRecordId(''); setRevenueContainerPrices({}) }}>Cancel</Button>
             <Button onClick={handleAddRevenue} disabled={submitting || !revenueForm.amount} className="bg-amber-600 hover:bg-amber-700 text-white">
               {submitting && <Loader2 className="size-4 mr-2 animate-spin" />}
               {editingRevenue ? 'Update Revenue' : 'Add Revenue'}

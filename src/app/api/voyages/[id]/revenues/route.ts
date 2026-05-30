@@ -20,6 +20,7 @@ export async function GET(
       where: { voyageId: id },
       include: {
         customer: { select: { id: true, name: true, code: true } },
+        teuRecord: true,
       },
       orderBy: { createdAt: 'desc' },
     })
@@ -63,6 +64,7 @@ export async function POST(
       data: {
         voyageId: id,
         revenueType: body.revenueType,
+        teuRecordId: body.teuRecordId || null,
         customerId: body.customerId || null,
         currency: body.currency || 'USD',
         amount,

@@ -274,15 +274,20 @@ model VoyageTEU {
   reeferUnits          Int     @default(0)
   specialUnits         Int     @default(0)
   teuUtilization       Float?  // loadedTEUs / totalTEUs * 100
+  notes                String?
   recordedAt           DateTime @default(now())
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+
+  revenues             VoyageRevenue[]
 }
 
 model VoyageRevenue {
   id            String    @id @default(cuid())
   voyageId      String
   voyage        Voyage    @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+  teuRecordId   String?
+  teuRecord     VoyageTEU? @relation(fields: [teuRecordId], references: [id])
   revenueType   String    // freight_income, slot_revenue, surcharges, handling_income, service_charges
   customerId    String?
   customer      Customer? @relation(fields: [customerId], references: [id])

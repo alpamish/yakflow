@@ -64,6 +64,7 @@ export async function POST(
         reeferUnits: body.reeferUnits || 0,
         specialUnits: body.specialUnits || 0,
         teuUtilization: Math.round(teuUtilization * 100) / 100,
+        notes: body.notes || null,
         recordedAt: body.recordedAt ? new Date(body.recordedAt) : new Date(),
       },
     })

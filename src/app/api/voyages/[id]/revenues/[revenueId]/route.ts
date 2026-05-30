@@ -27,6 +27,7 @@ export async function PATCH(
 
     const updateData: Record<string, unknown> = {}
     if (body.customerId !== undefined) updateData.customerId = body.customerId || null
+    if (body.teuRecordId !== undefined) updateData.teuRecordId = body.teuRecordId || null
     if (body.revenueType !== undefined) updateData.revenueType = body.revenueType
     if (body.invoiceNumber !== undefined) updateData.invoiceNumber = body.invoiceNumber || null
     if (body.currency !== undefined) updateData.currency = body.currency
@@ -42,6 +43,7 @@ export async function PATCH(
       data: updateData,
       include: {
         customer: { select: { id: true, name: true, code: true } },
+        teuRecord: true,
       },
     })
 

@@ -15,11 +15,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FreightFlow ERP - Freight Logistics Management",
+  title: "YakFlow - Freight Logistics Management",
   description: "Complete Freight Forwarding & Logistics ERP System",
-  keywords: ["FreightFlow", "ERP", "Freight", "Logistics", "Shipping", "Forwarding", "Supply Chain"],
+  keywords: ["YakFlow", "ERP", "Freight", "Logistics", "Shipping", "Forwarding", "Supply Chain"],
   icons: {
-    icon: "/logo.svg",
+    icon: "/yakflow.png",
   },
 };
 

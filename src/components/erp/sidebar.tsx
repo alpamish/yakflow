@@ -137,11 +137,11 @@ export function ERPSidebar() {
               onClick={() => navigateTo('dashboard')}
             >
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-emerald-600 text-white">
-                <Globe className="size-4" />
+              <img src="/yakflow-full.png" alt="yakflow" className="w-8 h-8 rounded-full" />
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-bold text-emerald-400">FreightFlow</span>
-                <span className="truncate text-xs text-sidebar-foreground/60">ERP System</span>
+                <span className="truncate font-bold text-emerald-400">YakFlow</span>
+                <span className="truncate text-xs text-sidebar-foreground/60">Delivering Value</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
