@@ -1,8 +1,15 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 export async function GET() {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
     const now = new Date()
     const currentYear = now.getFullYear()
     const currentMonth = now.getMonth()
@@ -19,15 +26,17 @@ export async function GET() {
       deliveredShipments,
       delayedShipments,
     ] = await Promise.all([
-      db.shipment.count(),
+      db.shipment.count({ where: { organizationId: orgId } }),
       db.shipment.count({
         where: {
+          organizationId: orgId,
           status: { in: ['booked', 'loading', 'in_transit', 'arrived', 'customs_clearance'] },
         },
       }),
-      db.shipment.count({ where: { status: 'delivered' } }),
+      db.shipment.count({ where: { organizationId: orgId, status: 'delivered' } }),
       db.shipment.count({
         where: {
+          organizationId: orgId,
           eta: { lt: now },
           status: { notIn: ['delivered', 'cancelled'] },
         },
@@ -36,9 +45,10 @@ export async function GET() {
 
     // === Voyage Statistics ===
     const [totalVoyages, activeVoyages] = await Promise.all([
-      db.voyage.count(),
+      db.voyage.count({ where: { organizationId: orgId } }),
       db.voyage.count({
         where: {
+          organizationId: orgId,
           status: { in: ['loading', 'departed', 'in_transit'] },
         },
       }),
@@ -46,11 +56,11 @@ export async function GET() {
 
     // === Monthly Revenue & Expenses (current month) ===
     const monthlyRevenues = await db.shipmentRevenue.findMany({
-      where: { createdAt: { gte: monthStart } },
+      where: { organizationId: orgId, createdAt: { gte: monthStart } },
       select: { amount: true },
     })
     const monthlyExpenses = await db.shipmentExpense.findMany({
-      where: { expenseDate: { gte: monthStart } },
+      where: { organizationId: orgId, expenseDate: { gte: monthStart } },
       select: { amount: true },
     })
 
@@ -76,6 +86,7 @@ export async function GET() {
 
       const count = await db.shipment.count({
         where: {
+          organizationId: orgId,
           createdAt: {
             gte: monthDate,
             lte: monthEnd,
@@ -98,6 +109,7 @@ export async function GET() {
 
       const monthRevenues = await db.shipmentRevenue.findMany({
         where: {
+          organizationId: orgId,
           createdAt: { gte: monthDate, lte: monthEnd },
         },
         select: { amount: true },
@@ -105,6 +117,7 @@ export async function GET() {
 
       const monthExpenses = await db.shipmentExpense.findMany({
         where: {
+          organizationId: orgId,
           expenseDate: { gte: monthDate, lte: monthEnd },
         },
         select: { amount: true },
@@ -127,6 +140,7 @@ export async function GET() {
     // === Expense Breakdown by Type ===
     const allExpenses = await db.shipmentExpense.findMany({
       where: {
+        organizationId: orgId,
         expenseDate: { gte: sixMonthsAgo },
       },
       select: { expenseType: true, amount: true },
@@ -146,6 +160,7 @@ export async function GET() {
 
     // === Country-wise Shipment Counts ===
     const shipments = await db.shipment.findMany({
+      where: { organizationId: orgId },
       select: { originCountry: true, destinationCountry: true },
     })
 
@@ -164,7 +179,7 @@ export async function GET() {
     const topCustomersRaw = await db.shipmentRevenue.groupBy({
       by: ['customerId'],
       _sum: { amount: true },
-      where: { customerId: { not: null } },
+      where: { customerId: { not: null }, organizationId: orgId },
       orderBy: { _sum: { amount: 'desc' } },
       take: 10,
     })
@@ -174,7 +189,7 @@ export async function GET() {
       .filter((id): id is string => id !== null)
 
     const customersData = await db.customer.findMany({
-      where: { id: { in: customerIds } },
+      where: { id: { in: customerIds }, organizationId: orgId },
       select: { id: true, name: true, code: true },
     })
 

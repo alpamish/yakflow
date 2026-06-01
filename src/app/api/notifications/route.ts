@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
+
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
@@ -14,11 +22,7 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * limit
 
-    const where: Record<string, unknown> = {}
-
-    if (userId) {
-      where.userId = userId
-    }
+    const where: Record<string, unknown> = { userId: session.user.id, organizationId: orgId }
 
     if (isRead !== '') {
       where.isRead = isRead === 'true'
@@ -62,6 +66,12 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
+
     const body = await request.json()
 
     if (!body.id) {
@@ -72,7 +82,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const existing = await db.notification.findUnique({
-      where: { id: body.id },
+      where: { id: body.id, userId: session.user.id, organizationId: orgId },
     })
 
     if (!existing) {
@@ -83,7 +93,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const notification = await db.notification.update({
-      where: { id: body.id },
+      where: { id: body.id, userId: session.user.id, organizationId: orgId },
       data: {
         isRead: body.isRead !== undefined ? body.isRead : true,
       },

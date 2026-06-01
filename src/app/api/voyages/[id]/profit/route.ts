@@ -1,15 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
     const { id } = await params
 
     const voyage = await db.voyage.findUnique({
-      where: { id },
+      where: { id, organizationId: orgId },
       include: {
         teuRecords: { orderBy: { recordedAt: 'desc' } },
         revenues: true,

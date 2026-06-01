@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
+
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
@@ -14,7 +22,7 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * limit
 
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { organizationId: orgId }
 
     if (entityType) {
       where.entityType = entityType
@@ -65,6 +73,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
+
     const body = await request.json()
 
     if (!body.entityType || !body.documentType || !body.name || !body.fileUrl) {
@@ -85,6 +99,7 @@ export async function POST(request: NextRequest) {
         mimeType: body.mimeType || null,
         version: body.version || 1,
         uploadedBy: body.uploadedBy || null,
+        organizationId: orgId,
       },
     })
 

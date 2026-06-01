@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useSyncExternalStore } from 'react'
 import { useTheme } from 'next-themes'
+import { useSession, signOut } from 'next-auth/react'
 import {
   LayoutDashboard,
   Ship,
@@ -108,10 +109,15 @@ const financeItems: NavItem[] = [
 ]
 
 export function ERPSidebar() {
+  const { data: session } = useSession()
   const { currentPage, navigateTo } = useNavigationStore()
   const { theme, setTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => { setMounted(true) }, [])
+  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false)
+
+  const user = session?.user
+  const initials = user?.name
+    ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
+    : '??'
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     'shipment-ops': true,
     'voyage-finance': true,
@@ -291,13 +297,13 @@ export function ERPSidebar() {
                 <SidebarMenuButton size="lg" className="hover:bg-sidebar-accent">
                   <Avatar className="size-8">
                     <AvatarFallback className="bg-emerald-700 text-white text-xs">
-                      JD
+                      {initials}
                     </AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">John Doe</span>
-                    <span className="truncate text-xs text-sidebar-foreground/60">
-                      Operations Manager
+                    <span className="truncate font-semibold">{user?.name || 'User'}</span>
+                    <span className="truncate text-xs text-sidebar-foreground/60 capitalize">
+                      {user?.role || ''}
                     </span>
                   </div>
                 </SidebarMenuButton>
@@ -321,7 +327,7 @@ export function ERPSidebar() {
                   {mounted ? (theme === 'dark' ? 'Light Mode' : 'Dark Mode') : ''}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive">
+                <DropdownMenuItem variant="destructive" onClick={() => signOut({ callbackUrl: '/login' })}>
                   <LogOut className="mr-2 size-4" />
                   Log out
                 </DropdownMenuItem>

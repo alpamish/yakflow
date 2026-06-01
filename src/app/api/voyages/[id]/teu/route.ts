@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
     const { id } = await params
 
-    const voyage = await db.voyage.findUnique({ where: { id } })
+    const voyage = await db.voyage.findUnique({ where: { id, organizationId: orgId } })
     if (!voyage) {
       return NextResponse.json(
         { success: false, error: 'Voyage not found' },
@@ -17,7 +24,7 @@ export async function GET(
     }
 
     const teuRecords = await db.voyageTEU.findMany({
-      where: { voyageId: id },
+      where: { voyageId: id, organizationId: orgId },
       orderBy: { recordedAt: 'desc' },
     })
 
@@ -36,10 +43,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
     const { id } = await params
     const body = await request.json()
 
-    const voyage = await db.voyage.findUnique({ where: { id } })
+    const voyage = await db.voyage.findUnique({ where: { id, organizationId: orgId } })
     if (!voyage) {
       return NextResponse.json(
         { success: false, error: 'Voyage not found' },
@@ -53,6 +65,7 @@ export async function POST(
 
     const teuRecord = await db.voyageTEU.create({
       data: {
+        organizationId: orgId,
         voyageId: id,
         totalContainers: body.totalContainers || 0,
         totalTEUs,

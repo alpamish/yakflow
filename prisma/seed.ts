@@ -1,10 +1,10 @@
 import { PrismaClient } from '@prisma/client'
 import * as fs from 'fs'
 import * as path from 'path'
+import * as bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
 
-// Type definitions for seed data
 interface SeedData {
   companyProfile: {
     name: string; legalName: string; taxId: string; address: string; city: string;
@@ -41,7 +41,6 @@ interface SeedData {
   users: { email: string; name: string; password: string; role: string }[]
 }
 
-// Exchange rate map
 const rateMap: Record<string, number> = {
   USD: 1.0,
   EUR: 1.08,
@@ -73,26 +72,25 @@ function getContainerSize(typeStr: string): string {
 
 function parseDate(val: string | null | undefined): Date | null {
   if (!val) return null
-  // Handle DD.MM.YYYY format
   const dmyMatch = val.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/)
   if (dmyMatch) {
     const [, day, month, year] = dmyMatch
     const d = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T00:00:00Z`)
     if (!isNaN(d.getTime())) return d
   }
-  // Try standard parsing
   const d = new Date(val)
   if (!isNaN(d.getTime())) return d
   return null
 }
 
 async function main() {
-  console.log('🚢 FreightFlow ERP - Seeding from STF2607 NILE MED data...')
+  console.log('YakFlow ERP - Seeding data...')
 
   // ============================================
-  // CLEAR EXISTING DATA
+  // CLEAR EXISTING DATA (reverse dependency order)
   // ============================================
   console.log('Clearing existing data...')
+  await prisma.organizationUser.deleteMany()
   await prisma.auditLog.deleteMany()
   await prisma.document.deleteMany()
   await prisma.payment.deleteMany()
@@ -111,9 +109,9 @@ async function main() {
   await prisma.vendor.deleteMany()
   await prisma.exchangeRate.deleteMany()
   await prisma.currency.deleteMany()
-  await prisma.companyProfile.deleteMany()
   await prisma.user.deleteMany()
-  console.log('✅ Existing data cleared.')
+  await prisma.organization.deleteMany()
+  console.log('Existing data cleared.')
 
   // ============================================
   // LOAD SEED DATA
@@ -123,36 +121,69 @@ async function main() {
   const data: SeedData = JSON.parse(rawData)
 
   // ============================================
-  // 1. USERS
+  // 1. ORGANIZATION
+  // ============================================
+  const orgData = data.companyProfile
+  const organization = await prisma.organization.create({
+    data: {
+      name: orgData.name,
+      slug: 'nilemed',
+      legalName: orgData.legalName,
+      taxId: orgData.taxId,
+      address: orgData.address,
+      city: orgData.city,
+      country: orgData.country,
+      phone: orgData.phone,
+      email: orgData.email,
+      website: orgData.website,
+      baseCurrency: orgData.baseCurrency,
+    },
+  })
+  const orgId = organization.id
+  console.log(`Created organization: ${organization.name} (${organization.slug})`)
+
+  // ============================================
+  // 2. USERS + ORGANIZATION MEMBERSHIPS
   // ============================================
   const users: Record<string, string> = {}
+  const passwordHash = await bcrypt.hash('password123', 12)
+
   for (const u of data.users) {
     const user = await prisma.user.create({
       data: {
         email: u.email,
         name: u.name,
-        password: '$2a$10$dummyhashforseedpurposesonly',
-        role: u.role,
+        password: passwordHash,
         isActive: true,
       },
     })
     users[u.email] = user.id
-  }
-  console.log(`✅ Created ${data.users.length} users`)
 
-  // ============================================
-  // 2. COMPANY PROFILE
-  // ============================================
-  const company = await prisma.companyProfile.create({ data: data.companyProfile })
-  console.log(`✅ Created company: ${company.name}`)
+    await prisma.organizationUser.create({
+      data: {
+        organizationId: orgId,
+        userId: user.id,
+        role: u.role === 'super_admin' ? 'admin' : u.role,
+      },
+    })
+  }
+  console.log(`Created ${data.users.length} users with org memberships`)
 
   // ============================================
   // 3. CURRENCIES
   // ============================================
   for (const c of data.currencies) {
-    await prisma.currency.create({ data: { code: c.code, name: c.name, symbol: c.symbol, isActive: true } })
+    await prisma.currency.create({
+      data: {
+        organizationId: orgId,
+        code: c.code,
+        name: c.name,
+        symbol: c.symbol,
+        isActive: true,
+      },
+    })
   }
-  console.log(`✅ Created ${data.currencies.length} currencies`)
+  console.log(`Created ${data.currencies.length} currencies`)
 
   // ============================================
   // 4. EXCHANGE RATES
@@ -160,6 +191,7 @@ async function main() {
   for (const r of data.exchangeRates) {
     await prisma.exchangeRate.create({
       data: {
+        organizationId: orgId,
         fromCurrency: r.fromCurrency,
         toCurrency: r.toCurrency,
         rate: r.rate,
@@ -168,7 +200,7 @@ async function main() {
       },
     })
   }
-  console.log(`✅ Created ${data.exchangeRates.length} exchange rates`)
+  console.log(`Created ${data.exchangeRates.length} exchange rates`)
 
   // ============================================
   // 5. CUSTOMERS
@@ -177,6 +209,7 @@ async function main() {
   for (const c of data.customers) {
     const customer = await prisma.customer.create({
       data: {
+        organizationId: orgId,
         name: c.name,
         code: c.code,
         type: c.type || 'both',
@@ -185,7 +218,7 @@ async function main() {
     })
     customerMap[c.name] = customer.id
   }
-  console.log(`✅ Created ${data.customers.length} customers`)
+  console.log(`Created ${data.customers.length} customers`)
 
   // ============================================
   // 6. VENDORS
@@ -194,6 +227,7 @@ async function main() {
   for (const v of data.vendors) {
     const vendor = await prisma.vendor.create({
       data: {
+        organizationId: orgId,
         name: v.name,
         code: v.code,
         type: 'shipping_line',
@@ -202,13 +236,14 @@ async function main() {
     })
     vendorMap[v.name] = vendor.id
   }
-  console.log(`✅ Created ${data.vendors.length} vendors`)
+  console.log(`Created ${data.vendors.length} vendors`)
 
   // ============================================
   // 7. VOYAGE
   // ============================================
   const voyage = await prisma.voyage.create({
     data: {
+      organizationId: orgId,
       voyageNumber: data.voyage.voyageNumber,
       vesselName: data.voyage.vesselName,
       sailingRoute: data.voyage.sailingRoute,
@@ -222,11 +257,11 @@ async function main() {
     },
   })
 
-  // Voyage TEU Record
   const teu = data.voyage.teuRecord
   const teuUtilization = teu.totalTEUs > 0 ? (teu.loadedTEUs / teu.totalTEUs * 100) : 0
   await prisma.voyageTEU.create({
     data: {
+      organizationId: orgId,
       voyageId: voyage.id,
       totalContainers: teu.totalContainers,
       totalTEUs: teu.totalTEUs,
@@ -241,10 +276,10 @@ async function main() {
     },
   })
 
-  // Voyage Expenses
   for (const ve of data.voyage.voyageExpenses) {
     await prisma.voyageExpense.create({
       data: {
+        organizationId: orgId,
         voyageId: voyage.id,
         expenseType: ve.expenseType,
         currency: ve.currency,
@@ -256,10 +291,10 @@ async function main() {
     })
   }
 
-  // Voyage Revenues
   for (const vr of data.voyage.voyageRevenues) {
     await prisma.voyageRevenue.create({
       data: {
+        organizationId: orgId,
         voyageId: voyage.id,
         revenueType: vr.revenueType,
         currency: vr.currency,
@@ -270,7 +305,7 @@ async function main() {
       },
     })
   }
-  console.log(`✅ Created voyage: ${voyage.voyageNumber} with ${data.voyage.voyageExpenses.length} expenses, ${data.voyage.voyageRevenues.length} revenues, TEU record`)
+  console.log(`Created voyage: ${voyage.voyageNumber} with expenses, revenues, TEU`)
 
   // ============================================
   // 8. SHIPMENTS + CONTAINERS + REVENUES + EXPENSES
@@ -286,13 +321,11 @@ async function main() {
     const direction = s.direction === 'export' ? 'EXP' : 'IMP'
     const shipmentNumber = `STF2607-${direction}-${String(shipmentIdx).padStart(4, '0')}`
 
-    // Find customer ID
     let customerId: string | null = null
     if (s.customerName && customerMap[s.customerName]) {
       customerId = customerMap[s.customerName]
     }
 
-    // Determine origin/destination countries
     let originCountry: string | null = null
     let destinationCountry: string | null = null
     if (s.direction === 'export') {
@@ -321,14 +354,10 @@ async function main() {
       }
     }
 
-    // Determine cargo type from IMO
     let cargoType = s.cargoType || 'general'
     let finalDestination = s.portOfDischarge || null
-
-    // Determine status
     let status = s.status || 'in_transit'
 
-    // Build remarks
     let remarks = ''
     if (s.isEmpty) remarks = 'Empty container repositioning'
     if (s.invoicingParty) remarks += (remarks ? ' | ' : '') + `Invoicing: ${s.invoicingParty}`
@@ -338,9 +367,9 @@ async function main() {
     if (s.notes) remarks += (remarks ? ' | ' : '') + s.notes
     if (s.term) remarks += (remarks ? ' | ' : '') + `Term: ${s.term}`
 
-    // Create shipment
     const shipment = await prisma.shipment.create({
       data: {
+        organizationId: orgId,
         shipmentNumber,
         direction: s.direction,
         transportMode: s.transportMode,
@@ -368,7 +397,6 @@ async function main() {
     })
     shipmentCount++
 
-    // Create containers
     for (const c of s.containers) {
       const containerType = normalizeContainerType(c.containerType)
       const containerSize = getContainerSize(containerType)
@@ -378,6 +406,7 @@ async function main() {
         const containerNumber = `${shipmentNumber}-${containerType}-${String(j + 1).padStart(3, '0')}`
         await prisma.container.create({
           data: {
+            organizationId: orgId,
             shipmentId: shipment.id,
             containerNumber,
             containerType,
@@ -391,10 +420,10 @@ async function main() {
       }
     }
 
-    // Create shipment revenues
     for (const r of s.revenues) {
       await prisma.shipmentRevenue.create({
         data: {
+          organizationId: orgId,
           shipmentId: shipment.id,
           customerId,
           revenueType: r.revenueType,
@@ -407,9 +436,7 @@ async function main() {
       totalRevenues++
     }
 
-    // Create shipment expenses
     for (const e of s.expenses) {
-      // Find vendor for expense
       let vendorId: string | null = null
       if (e.expenseType === 'dthc' && vendorMap['NUTEP Terminal']) {
         vendorId = vendorMap['NUTEP Terminal']
@@ -419,6 +446,7 @@ async function main() {
 
       await prisma.shipmentExpense.create({
         data: {
+          organizationId: orgId,
           shipmentId: shipment.id,
           expenseType: e.expenseType,
           vendorId,
@@ -433,10 +461,7 @@ async function main() {
     }
   }
 
-  console.log(`✅ Created ${shipmentCount} shipments`)
-  console.log(`✅ Created ${totalContainers} containers`)
-  console.log(`✅ Created ${totalRevenues} shipment revenues`)
-  console.log(`✅ Created ${totalExpenses} shipment expenses`)
+  console.log(`Created ${shipmentCount} shipments, ${totalContainers} containers, ${totalRevenues} revenues, ${totalExpenses} expenses`)
 
   // ============================================
   // 9. CHARGE TYPES
@@ -462,12 +487,18 @@ async function main() {
 
   for (const ct of chargeTypes) {
     await prisma.chargeType.upsert({
-      where: { type_value: { type: ct.type, value: ct.value } },
+      where: {
+        organizationId_type_value: {
+          organizationId: orgId,
+          type: ct.type,
+          value: ct.value,
+        },
+      },
       update: { label: ct.label },
-      create: ct,
+      create: { ...ct, organizationId: orgId },
     })
   }
-  console.log(`✅ Created ${chargeTypes.length} charge types`)
+  console.log(`Created ${chargeTypes.length} charge types`)
 
   // ============================================
   // SUMMARY
@@ -477,15 +508,13 @@ async function main() {
   const totalCustomerCount = await prisma.customer.count()
   const totalVendorCount = await prisma.vendor.count()
 
-  console.log('\n📊 ═══════════════════════════════════════')
-  console.log('  SEED COMPLETE - STF2607 NILE MED Data')
-  console.log('═══════════════════════════════════════')
-  console.log(`  Shipments:  ${totalShipmentCount}`)
-  console.log(`  Containers: ${totalContainerCount}`)
-  console.log(`  Customers:  ${totalCustomerCount}`)
-  console.log(`  Vendors:    ${totalVendorCount}`)
-  console.log(`  Voyage:     ${voyage.voyageNumber}`)
-  console.log('═══════════════════════════════════════\n')
+  console.log('\n--- SEED COMPLETE ---')
+  console.log(`Organization: ${organization.name}`)
+  console.log(`Shipments:  ${totalShipmentCount}`)
+  console.log(`Containers: ${totalContainerCount}`)
+  console.log(`Customers:  ${totalCustomerCount}`)
+  console.log(`Vendors:    ${totalVendorCount}`)
+  console.log(`Voyage:     ${voyage.voyageNumber}`)
 }
 
 main()
@@ -493,7 +522,7 @@ main()
     await prisma.$disconnect()
   })
   .catch(async (e) => {
-    console.error('❌ Seed failed:', e)
+    console.error('Seed failed:', e)
     await prisma.$disconnect()
     process.exit(1)
   })

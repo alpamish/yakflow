@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
@@ -17,7 +24,7 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * limit
 
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { organizationId: orgId }
 
     if (search) {
       where.OR = [
@@ -105,11 +112,17 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
     const body = await request.json()
 
     const year = new Date().getFullYear()
     const count = await db.shipment.count({
       where: {
+        organizationId: orgId,
         shipmentNumber: { startsWith: `SHP-${year}-` },
       },
     })
@@ -117,6 +130,7 @@ export async function POST(request: NextRequest) {
 
     const shipment = await db.shipment.create({
       data: {
+        organizationId: orgId,
         shipmentNumber,
         direction: body.direction || 'import',
         transportMode: body.transportMode || 'sea',

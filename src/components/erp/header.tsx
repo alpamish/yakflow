@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { useTheme } from 'next-themes'
+import { useSession, signOut } from 'next-auth/react'
 import { formatDistanceToNow } from 'date-fns'
 import {
   Search,
@@ -122,10 +123,16 @@ function getNotificationIcon(type: string) {
 }
 
 export function ERPHeader() {
+  const { data: session } = useSession()
   const { currentPage, goBack, navigateTo } = useNavigationStore()
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
+
+  const user = session?.user
+  const initials = user?.name
+    ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
+    : '??'
 
   const pageInfo = pageInfoMap[currentPage] || { label: 'Dashboard', icon: LayoutDashboard }
 
@@ -382,7 +389,7 @@ export function ERPHeader() {
           <Button variant="ghost" className="relative size-9 rounded-full">
             <Avatar className="size-8">
               <AvatarFallback className="bg-emerald-700 text-white text-xs">
-                JD
+                {initials}
               </AvatarFallback>
             </Avatar>
           </Button>
@@ -390,21 +397,21 @@ export function ERPHeader() {
         <DropdownMenuContent className="w-56" align="end" forceMount>
           <DropdownMenuLabel className="font-normal">
             <div className="flex flex-col space-y-1">
-              <p className="text-sm font-medium">John Doe</p>
-              <p className="text-xs text-muted-foreground">john@freightflow.com</p>
+              <p className="text-sm font-medium">{user?.name || 'User'}</p>
+              <p className="text-xs text-muted-foreground">{user?.email || ''}</p>
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => navigateTo('settings')}>
             <User className="mr-2 size-4" />
             Profile
           </DropdownMenuItem>
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => navigateTo('settings')}>
             <Settings className="mr-2 size-4" />
             Settings
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive">
+          <DropdownMenuItem variant="destructive" onClick={() => signOut({ callbackUrl: '/login' })}>
             <LogOut className="mr-2 size-4" />
             Log out
           </DropdownMenuItem>

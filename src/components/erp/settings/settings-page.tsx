@@ -25,9 +25,10 @@ import {
 import { format, parseISO } from 'date-fns'
 
 // ── Types ──
-interface CompanyProfile {
+interface Organization {
   id: string
   name: string
+  slug: string
   legalName: string | null
   taxId: string | null
   address: string | null
@@ -93,7 +94,7 @@ const ACTION_COLORS: Record<string, string> = {
 
 // ── Component ──
 export function SettingsPage() {
-  const [profile, setProfile] = useState<CompanyProfile | null>(null)
+  const [profile, setProfile] = useState<Organization | null>(null)
   const [currencies, setCurrencies] = useState<Currency[]>([])
   const [exchangeRates, setExchangeRates] = useState<ExchangeRate[]>([])
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
@@ -106,7 +107,7 @@ export function SettingsPage() {
   const [showRateDialog, setShowRateDialog] = useState(false)
 
   // Form states
-  const [profileForm, setProfileForm] = useState<Partial<CompanyProfile>>({})
+  const [profileForm, setProfileForm] = useState<Partial<Organization>>({})
   const [newCurrency, setNewCurrency] = useState({ code: '', name: '', symbol: '', isActive: true })
   const [newRate, setNewRate] = useState({ fromCurrency: '', toCurrency: '', rate: '', date: '', source: '' })
 

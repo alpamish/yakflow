@@ -1,12 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
+
     const { searchParams } = new URL(request.url)
     const isActive = searchParams.get('isActive') || ''
 
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { organizationId: orgId }
     if (isActive !== '') {
       where.isActive = isActive === 'true'
     }
@@ -28,6 +36,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
+
     const body = await request.json()
 
     if (!body.code || !body.name || !body.symbol) {
@@ -43,6 +57,7 @@ export async function POST(request: NextRequest) {
         name: body.name,
         symbol: body.symbol,
         isActive: body.isActive !== undefined ? body.isActive : true,
+        organizationId: orgId,
       },
     })
 

@@ -8,7 +8,7 @@ datasource db {
 }
 
 // ============================================
-// CORE / AUTH MODULE
+// MULTI-TENANT / AUTH MODULE
 // ============================================
 
 model User {
@@ -16,48 +16,21 @@ model User {
   email         String   @unique
   name          String
   password      String
-  role          String   @default("viewer") // super_admin, admin, accountant, operations, finance_manager, data_entry, viewer
   avatar        String?
   isActive      Boolean  @default(true)
   lastLoginAt   DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  organizations OrganizationUser[]
   auditLogs     AuditLog[]
   notifications Notification[]
 }
 
-model AuditLog {
-  id         String   @id @default(cuid())
-  userId     String?
-  user       User?    @relation(fields: [userId], references: [id])
-  action     String   // CREATE, UPDATE, DELETE, LOGIN, EXPORT, etc.
-  entity     String   // shipment, voyage, container, expense, etc.
-  entityId   String?
-  details    String?  // JSON string with change details
-  ipAddress  String?
-  createdAt  DateTime @default(now())
-}
-
-model Notification {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  title     String
-  message   String
-  type      String   @default("info") // info, warning, error, success
-  isRead    Boolean  @default(false)
-  link      String?
-  createdAt DateTime @default(now())
-}
-
-// ============================================
-// SETTINGS MODULE
-// ============================================
-
-model CompanyProfile {
-  id          String @id @default(cuid())
+model Organization {
+  id          String   @id @default(cuid())
   name        String
+  slug        String   @unique
   legalName   String?
   taxId       String?
   address     String?
@@ -67,31 +40,109 @@ model CompanyProfile {
   email       String?
   website     String?
   logo        String?
-  baseCurrency String @default("USD")
+  baseCurrency String  @default("USD")
+  createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  members      OrganizationUser[]
+  customers    Customer[]
+  vendors      Vendor[]
+  shipments    Shipment[]
+  containers   Container[]
+  shipmentExpenses   ShipmentExpense[]
+  shipmentRevenues   ShipmentRevenue[]
+  voyages      Voyage[]
+  voyageTEUs   VoyageTEU[]
+  voyageRevenues   VoyageRevenue[]
+  voyageExpenses   VoyageExpense[]
+  invoices     Invoice[]
+  payments     Payment[]
+  documents    Document[]
+  auditLogs    AuditLog[]
+  notifications Notification[]
+  currencies   Currency[]
+  exchangeRates ExchangeRate[]
+  chargeTypes  ChargeType[]
 }
 
-model Currency {
-  id        String   @id @default(cuid())
-  code      String   @unique // USD, EUR, GBP, etc.
-  name      String
-  symbol    String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model OrganizationUser {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String       @default("owner") // owner, admin, member, viewer
+  createdAt      DateTime     @default(now())
 
-  exchangeRates ExchangeRate[]
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@index([organizationId])
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id])
+  action         String       // CREATE, UPDATE, DELETE, LOGIN, EXPORT, etc.
+  entity         String       // shipment, voyage, container, expense, etc.
+  entityId       String?
+  details        String?      // JSON string with change details
+  ipAddress      String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+}
+
+model Notification {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  title          String
+  message        String
+  type           String       @default("info") // info, warning, error, success
+  isRead         Boolean      @default(false)
+  link           String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@index([userId])
+}
+
+// ============================================
+// SETTINGS MODULE
+// ============================================
+
+model Currency {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  code           String       // USD, EUR, GBP, etc.
+  name           String
+  symbol         String
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
 }
 
 model ExchangeRate {
-  id         String   @id @default(cuid())
-  fromCurrency String
-  toCurrency   String
-  rate       Float
-  date       DateTime
-  source     String?  // manual, api
-  currency   Currency @relation(fields: [fromCurrency], references: [code])
-  createdAt  DateTime @default(now())
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  fromCurrency   String
+  toCurrency     String
+  rate           Float
+  date           DateTime
+  source         String?      // manual, api
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
 }
 
 // ============================================
@@ -99,60 +150,72 @@ model ExchangeRate {
 // ============================================
 
 model Customer {
-  id          String   @id @default(cuid())
-  name        String
-  code        String   @unique
-  type        String   @default("both") // importer, exporter, both
-  email       String?
-  phone       String?
-  address     String?
-  city        String?
-  country     String?
-  taxId       String?
-  creditLimit Float?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  code           String
+  type           String       @default("both") // importer, exporter, both
+  email          String?
+  phone          String?
+  address        String?
+  city           String?
+  country        String?
+  taxId          String?
+  creditLimit    Float?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   shipments       Shipment[]
   revenues        ShipmentRevenue[]
   voyageRevenues  VoyageRevenue[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
 }
 
 model Vendor {
-  id          String   @id @default(cuid())
-  name        String
-  code        String   @unique
-  type        String?  // shipping_line, port, customs, transport, warehouse, other
-  email       String?
-  phone       String?
-  address     String?
-  city        String?
-  country     String?
-  taxId       String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  code           String
+  type           String?      // shipping_line, port, customs, transport, warehouse, other
+  email          String?
+  phone          String?
+  address        String?
+  city           String?
+  country        String?
+  taxId          String?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
-  expenses    ShipmentExpense[]
-  voyageExpenses VoyageExpense[]
+  expenses        ShipmentExpense[]
+  voyageExpenses  VoyageExpense[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
 }
 
 model Shipment {
-  id                String   @id @default(cuid())
-  shipmentNumber    String   @unique
-  direction         String   @default("import") // import, export
-  transportMode     String   @default("sea") // sea, air, land
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id])
+  shipmentNumber    String
+  direction         String       @default("import") // import, export
+  transportMode     String       @default("sea") // sea, air, land
   customerId        String?
-  customer          Customer? @relation(fields: [customerId], references: [id])
+  customer          Customer?    @relation(fields: [customerId], references: [id])
   shipper           String?
   consignee         String?
   notifyParty       String?
   bookingNumber     String?
   blNumber          String?
   awbNumber         String?
-  cargoType         String?  // general, hazardous, perishable, oversized
-  imoClass          String?  // IMO or NON-IMO
+  cargoType         String?      // general, hazardous, perishable, oversized
+  imoClass          String?      // IMO or NON-IMO
   originCountry     String?
   destinationCountry String?
   portOfLoading     String?
@@ -163,73 +226,88 @@ model Shipment {
   vesselName        String?
   voyageNumber      String?
   voyageId          String?
-  voyage            Voyage?  @relation(fields: [voyageId], references: [id])
+  voyage            Voyage?      @relation(fields: [voyageId], references: [id])
   freeDays          Int?
-  status            String   @default("draft") // draft, booked, loading, in_transit, arrived, customs_clearance, delivered, cancelled
+  status            String       @default("draft") // draft, booked, loading, in_transit, arrived, customs_clearance, delivered, cancelled
   remarks           String?
   createdBy         String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
   containers        Container[]
   expenses          ShipmentExpense[]
   revenues          ShipmentRevenue[]
+
+  @@unique([organizationId, shipmentNumber])
+  @@index([organizationId])
 }
 
 model Container {
-  id              String   @id @default(cuid())
+  id              String       @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
   shipmentId      String
-  shipment        Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  shipment        Shipment     @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   containerNumber String
-  containerType   String   @default("20DC") // 20DC, 40DC, 40HC, Reefer, Open Top, Flat Rack
-  containerSize   String   @default("20") // 20, 40, 45
+  containerType   String       @default("20DC") // 20DC, 40DC, 40HC, Reefer, Open Top, Flat Rack
+  containerSize   String       @default("20") // 20, 40, 45
   sealNumber      String?
   grossWeight     Float?
   netWeight       Float?
   volume          Float?
-  quantity        Int      @default(1)
-  status          String   @default("empty") // empty, loaded, in_transit, arrived, delivered
+  quantity        Int          @default(1)
+  status          String       @default("empty") // empty, loaded, in_transit, arrived, delivered
   currentLocation String?
-  deliveryStatus  String   @default("pending") // pending, picked_up, in_transit, delivered, returned
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  deliveryStatus  String       @default("pending") // pending, picked_up, in_transit, delivered, returned
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([organizationId])
 }
 
 model ShipmentExpense {
-  id            String   @id @default(cuid())
-  shipmentId    String
-  shipment      Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  expenseType   String   // othc, dthc, x_ray, inspection, d_and_d, storage, doc, pick_up
-  vendorId      String?
-  vendor        Vendor?  @relation(fields: [vendorId], references: [id])
-  quantity      Float    @default(1)
-  unitPrice     Float    @default(0)
-  amount        Float    // quantity * unitPrice
-  paymentStatus String   @default("pending") // pending, partial, paid
-  invoiceNumber String?
-  notes         String?
-  attachmentUrl String?
-  expenseDate   DateTime @default(now())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  shipmentId     String
+  shipment       Shipment     @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  expenseType    String       // othc, dthc, x_ray, inspection, d_and_d, storage, doc, pick_up
+  vendorId       String?
+  vendor         Vendor?      @relation(fields: [vendorId], references: [id])
+  quantity       Float        @default(1)
+  unitPrice      Float        @default(0)
+  amount         Float        // quantity * unitPrice
+  paymentStatus  String       @default("pending") // pending, partial, paid
+  invoiceNumber  String?
+  notes          String?
+  attachmentUrl  String?
+  expenseDate    DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
 }
 
 model ShipmentRevenue {
-  id            String   @id @default(cuid())
-  shipmentId    String
-  shipment      Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  customerId    String?
-  customer      Customer? @relation(fields: [customerId], references: [id])
-  revenueType   String   // othc, dthc, x_ray, inspection, d_and_d, storage, doc, pick_up
-  invoiceNumber String?
-  quantity      Float    @default(1)
-  unitPrice     Float    @default(0)
-  amount        Float    // quantity * unitPrice
-  notes         String?
-  dueDate       DateTime?
-  paymentStatus String   @default("pending") // pending, partial, paid, overdue
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  shipmentId     String
+  shipment       Shipment     @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  customerId     String?
+  customer       Customer?    @relation(fields: [customerId], references: [id])
+  revenueType    String       // othc, dthc, x_ray, inspection, d_and_d, storage, doc, pick_up
+  invoiceNumber  String?
+  quantity       Float        @default(1)
+  unitPrice      Float        @default(0)
+  amount         Float        // quantity * unitPrice
+  notes          String?
+  dueDate        DateTime?
+  paymentStatus  String       @default("pending") // pending, partial, paid, overdue
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
 }
 
 // ============================================
@@ -237,89 +315,106 @@ model ShipmentRevenue {
 // ============================================
 
 model Voyage {
-  id            String   @id @default(cuid())
-  voyageNumber  String   @unique
-  vesselName    String
-  sailingRoute  String?
-  departurePort String?
-  arrivalPort   String?
-  etd           DateTime?
-  eta           DateTime?
-  shippingLine  String?
-  status        String   @default("planned") // planned, loading, departed, in_transit, arrived, completed, cancelled
-  remarks       String?
-  createdBy     String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  voyageNumber   String
+  vesselName     String
+  sailingRoute   String?
+  departurePort  String?
+  arrivalPort    String?
+  etd            DateTime?
+  eta            DateTime?
+  shippingLine   String?
+  status         String       @default("planned") // planned, loading, departed, in_transit, arrived, completed, cancelled
+  remarks        String?
+  createdBy      String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   teuRecords    VoyageTEU[]
   revenues      VoyageRevenue[]
   expenses      VoyageExpense[]
   shipments     Shipment[]
+
+  @@unique([organizationId, voyageNumber])
+  @@index([organizationId])
 }
 
 model VoyageTEU {
-  id                   String  @id @default(cuid())
+  id                   String       @id @default(cuid())
+  organizationId       String
+  organization         Organization @relation(fields: [organizationId], references: [id])
   voyageId             String
-  voyage               Voyage  @relation(fields: [voyageId], references: [id], onDelete: Cascade)
-  totalContainers      Int     @default(0)
-  totalTEUs            Int     @default(0)
-  loadedTEUs           Int     @default(0)
-  emptyTEUs            Int     @default(0)
-  twentyFoot           Int     @default(0)
-  fortyFoot            Int     @default(0)
-  fortyFiveFoot        Int     @default(0)
-  reeferUnits          Int     @default(0)
-  specialUnits         Int     @default(0)
-  teuUtilization       Float?  // loadedTEUs / totalTEUs * 100
+  voyage               Voyage       @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+  totalContainers      Int          @default(0)
+  totalTEUs            Int          @default(0)
+  loadedTEUs           Int          @default(0)
+  emptyTEUs            Int          @default(0)
+  twentyFoot           Int          @default(0)
+  fortyFoot            Int          @default(0)
+  fortyFiveFoot        Int          @default(0)
+  reeferUnits          Int          @default(0)
+  specialUnits         Int          @default(0)
+  teuUtilization       Float?       // loadedTEUs / totalTEUs * 100
   notes                String?
-  recordedAt           DateTime @default(now())
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  recordedAt           DateTime     @default(now())
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
 
   revenues             VoyageRevenue[]
+
+  @@index([organizationId])
 }
 
 model VoyageRevenue {
-  id            String    @id @default(cuid())
-  voyageId      String
-  voyage        Voyage    @relation(fields: [voyageId], references: [id], onDelete: Cascade)
-  teuRecordId   String?
-  teuRecord     VoyageTEU? @relation(fields: [teuRecordId], references: [id])
-  revenueType   String    // freight_income, slot_revenue, surcharges, handling_income, service_charges
-  customerId    String?
-  customer      Customer? @relation(fields: [customerId], references: [id])
-  currency      String    @default("USD")
-  amount        Float
-  quantity      Int       @default(1)
-  weight        Float?
-  description   String?
-  invoiceNumber String?
-  paymentStatus String    @default("pending") // pending, partial, paid, overdue
-  dueDate       DateTime?
-  revenueDate   DateTime  @default(now())
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  voyageId       String
+  voyage         Voyage       @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+  teuRecordId    String?
+  teuRecord      VoyageTEU?   @relation(fields: [teuRecordId], references: [id])
+  revenueType    String       // freight_income, slot_revenue, surcharges, handling_income, service_charges
+  customerId     String?
+  customer       Customer?    @relation(fields: [customerId], references: [id])
+  currency       String       @default("USD")
+  amount         Float
+  quantity       Int          @default(1)
+  weight         Float?
+  description    String?
+  invoiceNumber  String?
+  paymentStatus  String       @default("pending") // pending, partial, paid, overdue
+  dueDate        DateTime?
+  revenueDate    DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
 }
 
 model VoyageExpense {
-  id            String   @id @default(cuid())
-  voyageId      String
-  voyage        Voyage   @relation(fields: [voyageId], references: [id], onDelete: Cascade)
-  expenseType   String   // ocean_freight, port_charges, fuel_costs, bunker_costs, canal_fees, rail_costs, customs, x_ray, terminal_handling, agency_costs, documentation, crew_costs, miscellaneous
-  vendorId      String?
-  vendor        Vendor?  @relation(fields: [vendorId], references: [id])
-  currency      String   @default("USD")
-  amount        Float
-  quantity      Int      @default(1)
-  unitPrice     Float    @default(0)
-  weight        Float?
-  description   String?
-  invoiceNumber String?
-  paymentStatus String   @default("pending") // pending, partial, paid
-  expenseDate   DateTime @default(now())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  voyageId       String
+  voyage         Voyage       @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+  expenseType    String       // ocean_freight, port_charges, fuel_costs, bunker_costs, canal_fees, rail_costs, customs, x_ray, terminal_handling, agency_costs, documentation, crew_costs, miscellaneous
+  vendorId       String?
+  vendor         Vendor?      @relation(fields: [vendorId], references: [id])
+  currency       String       @default("USD")
+  amount         Float
+  quantity       Int          @default(1)
+  unitPrice      Float        @default(0)
+  weight         Float?
+  description    String?
+  invoiceNumber  String?
+  paymentStatus  String       @default("pending") // pending, partial, paid
+  expenseDate    DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
 }
 
 // ============================================
@@ -327,15 +422,18 @@ model VoyageExpense {
 // ============================================
 
 model ChargeType {
-  id        String   @id @default(cuid())
-  type      String   // expense, revenue
-  value     String   // othc, dthc, x_ray, etc.
-  label     String   // OTHC, DTHC, X-RAY, etc.
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  type           String       // expense, revenue
+  value          String       // othc, dthc, x_ray, etc.
+  label          String       // OTHC, DTHC, X-RAY, etc.
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
-  @@unique([type, value])
+  @@unique([organizationId, type, value])
+  @@index([organizationId])
 }
 
 // ============================================
@@ -343,42 +441,51 @@ model ChargeType {
 // ============================================
 
 model Invoice {
-  id            String   @id @default(cuid())
-  invoiceNumber String   @unique
-  type          String   // receivable, payable
-  entityType    String   // shipment, voyage
-  entityId      String?
-  customerId    String?
-  vendorId      String?
-  currency      String   @default("USD")
-  exchangeRate  Float    @default(1)
-  subtotal      Float
-  taxAmount     Float    @default(0)
-  totalAmount   Float
-  totalBase     Float?
-  dueDate       DateTime?
-  status        String   @default("draft") // draft, sent, partial, paid, overdue, cancelled
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  invoiceNumber  String
+  type           String       // receivable, payable
+  entityType     String       // shipment, voyage
+  entityId       String?
+  customerId     String?
+  vendorId       String?
+  currency       String       @default("USD")
+  exchangeRate   Float        @default(1)
+  subtotal       Float
+  taxAmount      Float        @default(0)
+  totalAmount    Float
+  totalBase      Float?
+  dueDate        DateTime?
+  status         String       @default("draft") // draft, sent, partial, paid, overdue, cancelled
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
-  payments      Payment[]
+  payments       Payment[]
+
+  @@unique([organizationId, invoiceNumber])
+  @@index([organizationId])
 }
 
 model Payment {
-  id            String   @id @default(cuid())
-  invoiceId     String
-  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  amount        Float
-  currency      String   @default("USD")
-  exchangeRate  Float    @default(1)
-  amountBase    Float?
-  paymentMethod String?  // bank_transfer, cash, check, card
-  reference     String?
-  paymentDate   DateTime @default(now())
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  invoiceId      String
+  invoice        Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount         Float
+  currency       String       @default("USD")
+  exchangeRate   Float        @default(1)
+  amountBase     Float?
+  paymentMethod  String?      // bank_transfer, cash, check, card
+  reference      String?
+  paymentDate    DateTime     @default(now())
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
 }
 
 // ============================================
@@ -386,16 +493,20 @@ model Payment {
 // ============================================
 
 model Document {
-  id            String   @id @default(cuid())
-  entityType    String   // shipment, voyage, invoice
-  entityId      String?
-  documentType  String   // bl_copy, invoice, packing_list, customs, delivery_order, contract, receipt, other
-  name          String
-  fileUrl       String
-  fileSize      Int?
-  mimeType      String?
-  version       Int      @default(1)
-  uploadedBy    String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  entityType     String       // shipment, voyage, invoice
+  entityId       String?
+  documentType   String       // bl_copy, invoice, packing_list, customs, delivery_order, contract, receipt, other
+  name           String
+  fileUrl        String
+  fileSize       Int?
+  mimeType       String?
+  version        Int          @default(1)
+  uploadedBy     String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
 }

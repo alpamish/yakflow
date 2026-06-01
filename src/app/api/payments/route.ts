@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
+
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
@@ -15,7 +23,7 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * limit
 
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { organizationId: orgId }
 
     if (invoiceId) {
       where.invoiceId = invoiceId
@@ -79,6 +87,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
+
     const body = await request.json()
 
     if (!body.invoiceId || body.amount === undefined) {
@@ -89,7 +103,7 @@ export async function POST(request: NextRequest) {
     }
 
     const invoice = await db.invoice.findUnique({
-      where: { id: body.invoiceId },
+      where: { id: body.invoiceId, organizationId: orgId },
     })
 
     if (!invoice) {
@@ -113,6 +127,7 @@ export async function POST(request: NextRequest) {
         reference: body.reference || null,
         paymentDate: body.paymentDate ? new Date(body.paymentDate) : new Date(),
         notes: body.notes || null,
+        organizationId: orgId,
       },
       include: {
         invoice: {

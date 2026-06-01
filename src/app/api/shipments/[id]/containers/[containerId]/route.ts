@@ -1,15 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; containerId: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
     const { id, containerId } = await params
     const body = await request.json()
 
-    const shipment = await db.shipment.findUnique({ where: { id } })
+    const shipment = await db.shipment.findFirst({ where: { id, organizationId: orgId } })
     if (!shipment) {
       return NextResponse.json(
         { success: false, error: 'Shipment not found' },
@@ -17,7 +24,7 @@ export async function PATCH(
       )
     }
 
-    const existing = await db.container.findUnique({ where: { id: containerId } })
+    const existing = await db.container.findFirst({ where: { id: containerId, organizationId: orgId } })
     if (!existing) {
       return NextResponse.json(
         { success: false, error: 'Container not found' },
@@ -26,7 +33,7 @@ export async function PATCH(
     }
 
     const container = await db.container.update({
-      where: { id: containerId },
+      where: { id: containerId, organizationId: orgId },
       data: {
         containerNumber: body.containerNumber ?? undefined,
         containerType: body.containerType ?? undefined,
@@ -57,9 +64,14 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; containerId: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
     const { id, containerId } = await params
 
-    const shipment = await db.shipment.findUnique({ where: { id } })
+    const shipment = await db.shipment.findFirst({ where: { id, organizationId: orgId } })
     if (!shipment) {
       return NextResponse.json(
         { success: false, error: 'Shipment not found' },
@@ -67,7 +79,7 @@ export async function DELETE(
       )
     }
 
-    const existing = await db.container.findUnique({ where: { id: containerId } })
+    const existing = await db.container.findFirst({ where: { id: containerId, organizationId: orgId } })
     if (!existing) {
       return NextResponse.json(
         { success: false, error: 'Container not found' },
@@ -75,7 +87,7 @@ export async function DELETE(
       )
     }
 
-    await db.container.delete({ where: { id: containerId } })
+    await db.container.delete({ where: { id: containerId, organizationId: orgId } })
 
     return NextResponse.json({ success: true })
   } catch (error) {

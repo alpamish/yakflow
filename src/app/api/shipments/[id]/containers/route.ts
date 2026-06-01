@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
     const { id } = await params
 
-    const shipment = await db.shipment.findUnique({ where: { id } })
+    const shipment = await db.shipment.findFirst({ where: { id, organizationId: orgId } })
     if (!shipment) {
       return NextResponse.json(
         { success: false, error: 'Shipment not found' },
@@ -36,10 +43,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
     const { id } = await params
     const body = await request.json()
 
-    const shipment = await db.shipment.findUnique({ where: { id } })
+    const shipment = await db.shipment.findFirst({ where: { id, organizationId: orgId } })
     if (!shipment) {
       return NextResponse.json(
         { success: false, error: 'Shipment not found' },
@@ -56,6 +68,7 @@ export async function POST(
 
     const container = await db.container.create({
       data: {
+        organizationId: orgId,
         shipmentId: id,
         containerNumber: body.containerNumber,
         containerType: body.containerType || '20DC',

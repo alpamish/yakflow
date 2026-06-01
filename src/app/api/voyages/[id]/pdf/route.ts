@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { writeFile, unlink, readFile } from 'fs/promises'
@@ -41,15 +43,20 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
     const { id } = await params
 
-    // Fetch base currency from company profile
-    const companyProfile = await db.companyProfile.findFirst()
-    const baseCurrency = companyProfile?.baseCurrency || 'USD'
+    // Fetch base currency from organization
+    const orgData = await db.organization.findUnique({ where: { id: orgId }, select: { baseCurrency: true } })
+    const baseCurrency = orgData?.baseCurrency || 'USD'
 
     // Fetch voyage data
     const voyage = await db.voyage.findUnique({
-      where: { id },
+      where: { id, organizationId: orgId },
       include: {
         teuRecords: { orderBy: { recordedAt: 'desc' } },
         revenues: true,

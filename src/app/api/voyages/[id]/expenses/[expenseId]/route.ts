@@ -1,15 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; expenseId: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
     const { id, expenseId } = await params
     const body = await request.json()
 
-    const voyage = await db.voyage.findUnique({ where: { id } })
+    const voyage = await db.voyage.findUnique({ where: { id, organizationId: orgId } })
     if (!voyage) {
       return NextResponse.json(
         { success: false, error: 'Voyage not found' },
@@ -17,7 +24,7 @@ export async function PATCH(
       )
     }
 
-    const existing = await db.voyageExpense.findUnique({ where: { id: expenseId } })
+    const existing = await db.voyageExpense.findUnique({ where: { id: expenseId, organizationId: orgId } })
     if (!existing) {
       return NextResponse.json(
         { success: false, error: 'Expense not found' },
@@ -38,7 +45,7 @@ export async function PATCH(
     if (body.paymentStatus !== undefined) updateData.paymentStatus = body.paymentStatus
 
     const expense = await db.voyageExpense.update({
-      where: { id: expenseId },
+      where: { id: expenseId, organizationId: orgId },
       data: updateData,
       include: {
         vendor: { select: { id: true, name: true, code: true } },
@@ -60,9 +67,14 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; expenseId: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
     const { id, expenseId } = await params
 
-    const voyage = await db.voyage.findUnique({ where: { id } })
+    const voyage = await db.voyage.findUnique({ where: { id, organizationId: orgId } })
     if (!voyage) {
       return NextResponse.json(
         { success: false, error: 'Voyage not found' },
@@ -70,7 +82,7 @@ export async function DELETE(
       )
     }
 
-    const existing = await db.voyageExpense.findUnique({ where: { id: expenseId } })
+    const existing = await db.voyageExpense.findUnique({ where: { id: expenseId, organizationId: orgId } })
     if (!existing) {
       return NextResponse.json(
         { success: false, error: 'Expense not found' },
@@ -78,7 +90,7 @@ export async function DELETE(
       )
     }
 
-    await db.voyageExpense.delete({ where: { id: expenseId } })
+    await db.voyageExpense.delete({ where: { id: expenseId, organizationId: orgId } })
 
     return NextResponse.json({ success: true })
   } catch (error) {

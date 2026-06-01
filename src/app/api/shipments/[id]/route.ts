@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
     const { id } = await params
-    const shipment = await db.shipment.findUnique({
-      where: { id },
+    const shipment = await db.shipment.findFirst({
+      where: { id, organizationId: orgId },
       include: {
         customer: true,
         voyage: true,
@@ -48,10 +55,15 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
     const { id } = await params
     const body = await request.json()
 
-    const existing = await db.shipment.findUnique({ where: { id } })
+    const existing = await db.shipment.findFirst({ where: { id, organizationId: orgId } })
     if (!existing) {
       return NextResponse.json(
         { success: false, error: 'Shipment not found' },
@@ -60,7 +72,7 @@ export async function PUT(
     }
 
     const shipment = await db.shipment.update({
-      where: { id },
+      where: { id, organizationId: orgId },
       data: {
         direction: body.direction,
         transportMode: body.transportMode,
@@ -108,9 +120,14 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
     const { id } = await params
 
-    const existing = await db.shipment.findUnique({ where: { id } })
+    const existing = await db.shipment.findFirst({ where: { id, organizationId: orgId } })
     if (!existing) {
       return NextResponse.json(
         { success: false, error: 'Shipment not found' },
@@ -118,7 +135,7 @@ export async function DELETE(
       )
     }
 
-    await db.shipment.delete({ where: { id } })
+    await db.shipment.delete({ where: { id, organizationId: orgId } })
 
     return NextResponse.json({ success: true, data: { id } })
   } catch (error) {

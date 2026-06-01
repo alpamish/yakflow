@@ -1,12 +1,19 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 export async function GET() {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = session.user.organizationId
     // ============================================================
     // 1. Company Info
     // ============================================================
-    const companyProfile = await db.companyProfile.findFirst()
+    const org = await db.organization.findUnique({ where: { id: orgId } })
 
     // ============================================================
     // 2. Shipment Summary
@@ -21,14 +28,14 @@ export async function GET() {
       shipmentExpenseAgg,
       allShipments,
     ] = await Promise.all([
-      db.shipment.count(),
-      db.shipment.groupBy({ by: ['status'], _count: { status: true } }),
-      db.shipment.groupBy({ by: ['direction'], _count: { direction: true } }),
-      db.shipment.groupBy({ by: ['transportMode'], _count: { transportMode: true } }),
-      db.container.count(),
-      db.shipmentRevenue.aggregate({ _sum: { amount: true } }),
-      db.shipmentExpense.aggregate({ _sum: { amount: true } }),
-      db.shipment.findMany({ select: { id: true, createdAt: true } }),
+      db.shipment.count({ where: { organizationId: orgId } }),
+      db.shipment.groupBy({ by: ['status'], _count: { status: true }, where: { organizationId: orgId } }),
+      db.shipment.groupBy({ by: ['direction'], _count: { direction: true }, where: { organizationId: orgId } }),
+      db.shipment.groupBy({ by: ['transportMode'], _count: { transportMode: true }, where: { organizationId: orgId } }),
+      db.container.count({ where: { organizationId: orgId } }),
+      db.shipmentRevenue.aggregate({ _sum: { amount: true }, where: { organizationId: orgId } }),
+      db.shipmentExpense.aggregate({ _sum: { amount: true }, where: { organizationId: orgId } }),
+      db.shipment.findMany({ where: { organizationId: orgId }, select: { id: true, createdAt: true } }),
     ])
 
     const shipmentStatusBreakdown: Record<string, number> = {}
@@ -61,14 +68,14 @@ export async function GET() {
       voyageRevenueAgg,
       voyageExpenseAgg,
     ] = await Promise.all([
-      db.voyage.count(),
-      db.voyage.groupBy({ by: ['status'], _count: { status: true } }),
+      db.voyage.count({ where: { organizationId: orgId } }),
+      db.voyage.groupBy({ by: ['status'], _count: { status: true }, where: { organizationId: orgId } }),
       db.voyageTEU.findMany({
         distinct: ['voyageId'],
         orderBy: { recordedAt: 'desc' },
       }),
-      db.voyageRevenue.aggregate({ _sum: { amount: true } }),
-      db.voyageExpense.aggregate({ _sum: { amount: true } }),
+      db.voyageRevenue.aggregate({ _sum: { amount: true }, where: { organizationId: orgId } }),
+      db.voyageExpense.aggregate({ _sum: { amount: true }, where: { organizationId: orgId } }),
     ])
 
     const voyageStatusBreakdown: Record<string, number> = {}
@@ -88,12 +95,12 @@ export async function GET() {
     // 4. Customer Summary
     // ============================================================
     const [totalCustomers, activeCustomers, revenueByCustomer] = await Promise.all([
-      db.customer.count(),
-      db.customer.count({ where: { isActive: true } }),
+      db.customer.count({ where: { organizationId: orgId } }),
+      db.customer.count({ where: { organizationId: orgId, isActive: true } }),
       db.shipmentRevenue.groupBy({
         by: ['customerId'],
         _sum: { amount: true },
-        where: { customerId: { not: null } },
+        where: { customerId: { not: null }, organizationId: orgId },
         orderBy: { _sum: { amount: 'desc' } },
         take: 5,
       }),
@@ -104,7 +111,7 @@ export async function GET() {
       .filter((id): id is string => id !== null)
 
     const topCustomers = await db.customer.findMany({
-      where: { id: { in: topCustomerIds } },
+      where: { id: { in: topCustomerIds }, organizationId: orgId },
       select: { id: true, name: true },
     })
 
@@ -120,12 +127,12 @@ export async function GET() {
     // 5. Vendor Summary
     // ============================================================
     const [totalVendors, activeVendors, expenseByVendor] = await Promise.all([
-      db.vendor.count(),
-      db.vendor.count({ where: { isActive: true } }),
+      db.vendor.count({ where: { organizationId: orgId } }),
+      db.vendor.count({ where: { organizationId: orgId, isActive: true } }),
       db.shipmentExpense.groupBy({
         by: ['vendorId'],
         _sum: { amount: true },
-        where: { vendorId: { not: null } },
+        where: { vendorId: { not: null }, organizationId: orgId },
         orderBy: { _sum: { amount: 'desc' } },
         take: 5,
       }),
@@ -136,7 +143,7 @@ export async function GET() {
       .filter((id): id is string => id !== null)
 
     const topVendors = await db.vendor.findMany({
-      where: { id: { in: topVendorIds } },
+      where: { id: { in: topVendorIds }, organizationId: orgId },
       select: { id: true, name: true },
     })
 
@@ -162,34 +169,38 @@ export async function GET() {
       apInvoices,
       invoicesByCurrency,
     ] = await Promise.all([
-      db.invoice.count(),
+      db.invoice.count({ where: { organizationId: orgId } }),
       db.invoice.groupBy({
         by: ['status'],
         _count: { status: true },
         _sum: { totalAmount: true },
+        where: { organizationId: orgId },
       }),
       db.invoice.aggregate({
         _sum: { subtotal: true, taxAmount: true, totalAmount: true },
+        where: { organizationId: orgId },
       }),
-      db.payment.count(),
+      db.payment.count({ where: { organizationId: orgId } }),
       db.payment.groupBy({
         by: ['paymentMethod'],
         _count: true,
         _sum: { amountBase: true },
+        where: { organizationId: orgId },
       }),
-      db.payment.aggregate({ _sum: { amountBase: true } }),
+      db.payment.aggregate({ _sum: { amountBase: true }, where: { organizationId: orgId } }),
       db.invoice.aggregate({
         _sum: { totalAmount: true },
-        where: { status: { in: ['sent', 'overdue'] }, type: 'receivable' },
+        where: { organizationId: orgId, status: { in: ['sent', 'overdue'] }, type: 'receivable' },
       }),
       db.invoice.aggregate({
         _sum: { totalAmount: true },
-        where: { type: 'payable', status: { notIn: ['paid', 'cancelled'] } },
+        where: { organizationId: orgId, type: 'payable', status: { notIn: ['paid', 'cancelled'] } },
       }),
       db.invoice.groupBy({
         by: ['currency'],
         _count: true,
         _sum: { totalAmount: true, totalBase: true },
+        where: { organizationId: orgId },
       }),
     ])
 
@@ -229,13 +240,16 @@ export async function GET() {
       db.container.groupBy({
         by: ['containerSize'],
         _count: { containerSize: true },
+        where: { organizationId: orgId },
       }),
       db.container.groupBy({
         by: ['status'],
         _count: { status: true },
+        where: { organizationId: orgId },
       }),
       db.container.aggregate({
         _count: true,
+        where: { organizationId: orgId },
       }),
     ])
 
@@ -264,10 +278,12 @@ export async function GET() {
       db.shipmentExpense.groupBy({
         by: ['expenseType'],
         _sum: { amount: true },
+        where: { organizationId: orgId },
       }),
       db.voyageExpense.groupBy({
         by: ['expenseType'],
         _sum: { amount: true },
+        where: { organizationId: orgId },
       }),
     ])
 
@@ -295,10 +311,12 @@ export async function GET() {
       db.shipmentRevenue.groupBy({
         by: ['revenueType'],
         _sum: { amount: true },
+        where: { organizationId: orgId },
       }),
       db.voyageRevenue.groupBy({
         by: ['revenueType'],
         _sum: { amount: true },
+        where: { organizationId: orgId },
       }),
     ])
 
@@ -327,23 +345,23 @@ export async function GET() {
     const [monthlyShipments, monthlyShipmentRevenues, monthlyShipmentExpenses, monthlyVoyageRevenues, monthlyVoyageExpenses] =
       await Promise.all([
         db.shipment.findMany({
-          where: { createdAt: { gte: sixMonthsAgo } },
+          where: { organizationId: orgId, createdAt: { gte: sixMonthsAgo } },
           select: { createdAt: true },
         }),
         db.shipmentRevenue.findMany({
-          where: { createdAt: { gte: sixMonthsAgo } },
+          where: { organizationId: orgId, createdAt: { gte: sixMonthsAgo } },
           select: { amount: true, createdAt: true },
         }),
         db.shipmentExpense.findMany({
-          where: { expenseDate: { gte: sixMonthsAgo } },
+          where: { organizationId: orgId, expenseDate: { gte: sixMonthsAgo } },
           select: { amount: true, expenseDate: true },
         }),
         db.voyageRevenue.findMany({
-          where: { revenueDate: { gte: sixMonthsAgo } },
+          where: { organizationId: orgId, revenueDate: { gte: sixMonthsAgo } },
           select: { amount: true, revenueDate: true },
         }),
         db.voyageExpense.findMany({
-          where: { expenseDate: { gte: sixMonthsAgo } },
+          where: { organizationId: orgId, expenseDate: { gte: sixMonthsAgo } },
           select: { amount: true, expenseDate: true },
         }),
       ])
@@ -416,8 +434,8 @@ export async function GET() {
     // ============================================================
     const data = {
       companyInfo: {
-        name: companyProfile?.name ?? '',
-        baseCurrency: companyProfile?.baseCurrency ?? 'USD',
+        name: org?.name ?? '',
+        baseCurrency: org?.baseCurrency ?? 'USD',
       },
 
       shipmentSummary: {
