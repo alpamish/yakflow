@@ -22,9 +22,11 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  organizations OrganizationUser[]
-  auditLogs     AuditLog[]
-  notifications Notification[]
+  organizations     OrganizationUser[]
+  auditLogs         AuditLog[]
+  notifications     Notification[]
+  forecastFiles     ForecastFile[]
+  forecastChangeLogs ForecastChangeLog[]
 }
 
 model Organization {
@@ -63,6 +65,7 @@ model Organization {
   currencies   Currency[]
   exchangeRates ExchangeRate[]
   chargeTypes  ChargeType[]
+  forecastFiles ForecastFile[]
 }
 
 model OrganizationUser {
@@ -509,4 +512,69 @@ model Document {
   updatedAt      DateTime     @updatedAt
 
   @@index([organizationId])
+}
+
+// ============================================
+// PLANNING & FORECAST MODULE (STANDALONE)
+// Completely isolated from operational data
+// ============================================
+
+model ForecastFile {
+  id              String   @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  version         Int
+  originalName    String
+  filename        String
+  uploadedBy      String
+  uploadedById    String?
+  user            User?    @relation(fields: [uploadedById], references: [id])
+  fileSize        Int      @default(0)
+  rowCount        Int      @default(0)
+  columnHeaders   String   // JSON array of all column names
+  changeSummary   String?  // JSON: { updates, newRows, removedRows }
+  createdAt       DateTime @default(now())
+
+  rows       ForecastRow[]
+  changeLogs ForecastChangeLog[]
+
+  @@unique([organizationId, version])
+  @@index([organizationId])
+}
+
+model ForecastRow {
+  id              String       @id @default(cuid())
+  forecastFileId  String
+  forecastFile    ForecastFile @relation(fields: [forecastFileId], references: [id], onDelete: Cascade)
+  voyageNumber    String?
+  containerNumber String?
+  shipmentId      String?
+  bookingRef      String?
+  rowIndex        Int
+  data            String       // FULL JSON object — every column from Excel
+  createdAt       DateTime     @default(now())
+
+  @@index([forecastFileId])
+}
+
+model ForecastChangeLog {
+  id                String       @id @default(cuid())
+  forecastFileId    String
+  forecastFile      ForecastFile @relation(fields: [forecastFileId], references: [id], onDelete: Cascade)
+  comparedToVersion Int
+  changeType        String       // 'updated' | 'new' | 'removed'
+  field             String?      // column name (null for new/removed rows)
+  oldValue          String?
+  newValue          String?
+  voyageNumber      String?
+  containerNumber   String?
+  shipmentId        String?
+  bookingRef        String?
+  rowIndex          Int?
+  uploadedBy        String
+  uploadedById      String?
+  user              User?        @relation(fields: [uploadedById], references: [id])
+  createdAt         DateTime     @default(now())
+
+  @@index([forecastFileId])
 }

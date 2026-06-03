@@ -22,6 +22,7 @@ import { VoyageExpensesOverview } from '@/components/erp/voyage/voyage-expenses-
 import { VoyageProfitability } from '@/components/erp/voyage/voyage-profitability'
 import { VoyageReports } from '@/components/erp/voyage/voyage-reports'
 import { DocumentsPage } from '@/components/erp/documents/documents-page'
+import { ForecastPage } from '@/components/erp/forecast/forecast-page'
 import { AnalyticsPage } from '@/components/erp/analytics/analytics-page'
 import { SettingsPage } from '@/components/erp/settings/settings-page'
 import { AccountsReceivable } from '@/components/erp/finance/accounts-receivable'
@@ -40,6 +41,11 @@ function PageContent() {
   // Summary Page
   if (currentPage === 'summary') {
     return <SummaryPage />
+  }
+
+  // Forecast Module
+  if (currentPage === 'forecast') {
+    return <ForecastPage />
   }
 
   // Shipment Operations Module

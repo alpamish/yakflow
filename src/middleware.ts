@@ -1,7 +1,7 @@
 import { withAuth } from 'next-auth/middleware'
 import { NextResponse } from 'next/server'
 
-const publicPaths = ['/login', '/register', '/']
+const publicPaths = ['/login', '/register']
 const publicApiPaths = ['/api/auth', '/api/register']
 const staticPaths = ['/_next', '/favicon', '/yakflow.png', '/yakflow-full.png']
 

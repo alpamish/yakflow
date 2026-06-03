@@ -28,6 +28,7 @@ import {
   FileText,
   FolderOpen,
   BarChart3,
+  ClipboardList,
   Settings,
   User,
   LogOut,
@@ -77,6 +78,7 @@ import { useNavigationStore, type PageId } from '@/lib/store'
 
 const pageInfoMap: Record<PageId, { label: string; parent?: string; icon: React.ElementType }> = {
   dashboard: { label: 'Dashboard', icon: LayoutDashboard },
+  summary: { label: 'Summary', icon: ClipboardList },
   shipments: { label: 'All Shipments', parent: 'Shipment Operations', icon: Package },
   'shipment-detail': { label: 'Shipment Detail', parent: 'Shipment Operations', icon: Package },
   'container-tracking': { label: 'Container Tracking', parent: 'Shipment Operations', icon: Container },
@@ -97,6 +99,7 @@ const pageInfoMap: Record<PageId, { label: string; parent?: string; icon: React.
   'finance-invoices': { label: 'Invoices', parent: 'Finance', icon: FileText },
   'finance-payments': { label: 'Payments', parent: 'Finance', icon: Banknote },
   documents: { label: 'Documents', icon: FolderOpen },
+  forecast: { label: 'Forecast', parent: 'Planning & Forecast', icon: TrendingUp },
   analytics: { label: 'Analytics', icon: BarChart3 },
   settings: { label: 'Settings', icon: Settings },
 }

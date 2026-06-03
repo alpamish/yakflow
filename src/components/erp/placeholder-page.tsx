@@ -18,6 +18,7 @@ import {
   FileText,
   FolderOpen,
   BarChart3,
+  ClipboardList,
   Settings,
   Construction,
 } from 'lucide-react'
@@ -145,6 +146,16 @@ const pageConfigMap: Record<PageId, {
   accentColor?: string
 }> = {
   dashboard: { title: '', description: '', icon: Package }, // handled separately
+  summary: {
+    title: 'Summary',
+    description: 'Overall summary of logistics operations.',
+    icon: ClipboardList,
+  },
+  forecast: {
+    title: 'Forecast',
+    description: 'Planning and forecast tracking system.',
+    icon: TrendingUp,
+  },
   shipments: {
     title: 'All Shipments',
     description: 'Manage and track all your freight shipments across the supply chain.',

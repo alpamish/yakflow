@@ -27,6 +27,7 @@ export type PageId =
   | 'documents'
   | 'analytics'
   | 'settings'
+  | 'forecast'
 
 interface NavigationState {
   currentPage: PageId

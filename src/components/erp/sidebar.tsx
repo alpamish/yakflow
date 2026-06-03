@@ -101,6 +101,10 @@ const navSections: NavSection[] = [
   },
 ]
 
+const planningItems: NavItem[] = [
+  { id: 'forecast', label: 'Forecast', icon: TrendingUp },
+]
+
 const financeItems: NavItem[] = [
   { id: 'finance-receivable', label: 'Accounts Receivable', icon: ArrowDownLeft },
   { id: 'finance-payable', label: 'Accounts Payable', icon: ArrowUpRight },
@@ -221,6 +225,33 @@ export function ERPSidebar() {
             )}
           </SidebarGroup>
         ))}
+
+        {/* Planning & Forecast */}
+        <SidebarGroup>
+          <SidebarGroupLabel>
+            <BarChart3 className="size-4 mr-1" />
+            Planning &amp; Forecast
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {planningItems.map((item) => (
+                <SidebarMenuItem key={item.id}>
+                  <SidebarMenuButton
+                    isActive={isActive(item.id)}
+                    onClick={() => navigateTo(item.id)}
+                    tooltip={item.label}
+                    className="pl-6"
+                  >
+                    <item.icon className="size-4" />
+                    <span>{item.label}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarSeparator />
 
         {/* Finance */}
         <SidebarGroup>
